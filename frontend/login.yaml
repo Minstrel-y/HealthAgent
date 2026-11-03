@@ -1,0 +1,58 @@
+- generic [active] [ref=f1476e1]:
+  - generic [ref=f1476e3]:
+    - banner [ref=f1476e4]:
+      - generic [ref=f1476e5]:
+        - generic [ref=f1476e6]: 🩺
+        - generic [ref=f1476e7]:
+          - generic [ref=f1476e8]: 康鉴智航
+          - generic [ref=f1476e9]: 健康干预 AI 智能体
+      - generic [ref=f1476e10]:
+        - link "U 个人设置" [ref=f1476e11]:
+          - /url: /settings
+          - generic [ref=f1476e12]: U
+          - generic [ref=f1476e14]: 个人设置
+        - button "退出" [ref=f1476e15] [cursor=pointer]
+    - generic [ref=f1476e17]:
+      - navigation [ref=f1476e18]:
+        - link "◲ 报告总览" [ref=f1476e19]:
+          - /url: /overview
+          - generic [ref=f1476e20]: ◲
+          - generic [ref=f1476e21]: 报告总览
+        - link "✎ 录入体检" [ref=f1476e22]:
+          - /url: /entry
+          - generic [ref=f1476e23]: ✎
+          - generic [ref=f1476e24]: 录入体检
+        - link "◹ 指标趋势" [ref=f1476e25]:
+          - /url: /trend
+          - generic [ref=f1476e26]: ◹
+          - generic [ref=f1476e27]: 指标趋势
+        - link "▤ 历史档案" [ref=f1476e28]:
+          - /url: /history
+          - generic [ref=f1476e29]: ▤
+          - generic [ref=f1476e30]: 历史档案
+        - link "◍ AI 问答" [ref=f1476e31]:
+          - /url: /chat
+          - generic [ref=f1476e32]: ◍
+          - generic [ref=f1476e33]: AI 问答
+        - link "⚙ 个人设置" [ref=f1476e34]:
+          - /url: /settings
+          - generic [ref=f1476e35]: ⚙
+          - generic [ref=f1476e36]: 个人设置
+        - button "«" [ref=f1476e37] [cursor=pointer]
+      - main [ref=f1476e38]:
+        - generic [ref=f1476e40]:
+          - generic [ref=f1476e41]: 康鉴智航
+          - generic [ref=f1476e42]: 健康干预 AI 智能体 · 登录
+          - generic [ref=f1476e43]:
+            - tablist [ref=f1476e47]:
+              - tab "账号登录" [selected] [ref=f1476e49]
+              - tab "注册" [ref=f1476e50]
+              - tab "微信登录" [ref=f1476e51]
+            - tabpanel "账号登录" [ref=f1476e53]:
+              - generic [ref=f1476e54]:
+                - textbox "请输入用户名" [ref=f1476e59]
+                - textbox "请输入密码" [ref=f1476e64]
+                - button "登 录" [ref=f1476e65] [cursor=pointer]
+          - paragraph [ref=f1476e67]: 本系统输出仅为健康科普参考不能替代执业医师诊断
+  - alert [ref=f1476e68]:
+    - paragraph [ref=f1476e72]: Not authenticated

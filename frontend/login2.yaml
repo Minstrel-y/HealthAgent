@@ -1,0 +1,55 @@
+- generic [ref=f1724e3]:
+  - banner [ref=f1724e4]:
+    - generic [ref=f1724e5]:
+      - generic [ref=f1724e6]: 🩺
+      - generic [ref=f1724e7]:
+        - generic [ref=f1724e8]: 康鉴智航
+        - generic [ref=f1724e9]: 健康干预 AI 智能体
+    - generic [ref=f1724e10]:
+      - link "U 个人设置" [ref=f1724e11]:
+        - /url: /settings
+        - generic [ref=f1724e12]: U
+        - generic [ref=f1724e14]: 个人设置
+      - button "退出" [ref=f1724e15] [cursor=pointer]
+  - generic [ref=f1724e17]:
+    - navigation [ref=f1724e18]:
+      - link "◲ 报告总览" [ref=f1724e19]:
+        - /url: /overview
+        - generic [ref=f1724e20]: ◲
+        - generic [ref=f1724e21]: 报告总览
+      - link "✎ 录入体检" [ref=f1724e22]:
+        - /url: /entry
+        - generic [ref=f1724e23]: ✎
+        - generic [ref=f1724e24]: 录入体检
+      - link "◹ 指标趋势" [ref=f1724e25]:
+        - /url: /trend
+        - generic [ref=f1724e26]: ◹
+        - generic [ref=f1724e27]: 指标趋势
+      - link "▤ 历史档案" [ref=f1724e28]:
+        - /url: /history
+        - generic [ref=f1724e29]: ▤
+        - generic [ref=f1724e30]: 历史档案
+      - link "◍ AI 问答" [ref=f1724e31]:
+        - /url: /chat
+        - generic [ref=f1724e32]: ◍
+        - generic [ref=f1724e33]: AI 问答
+      - link "⚙ 个人设置" [ref=f1724e34]:
+        - /url: /settings
+        - generic [ref=f1724e35]: ⚙
+        - generic [ref=f1724e36]: 个人设置
+      - button "«" [ref=f1724e37] [cursor=pointer]
+    - main [ref=f1724e38]:
+      - generic [ref=f1724e40]:
+        - generic [ref=f1724e41]: 康鉴智航
+        - generic [ref=f1724e42]: 健康干预 AI 智能体 · 登录
+        - generic [ref=f1724e43]:
+          - tablist [ref=f1724e47]:
+            - tab "账号登录" [selected] [ref=f1724e49]
+            - tab "注册" [ref=f1724e50]
+            - tab "微信登录" [ref=f1724e51]
+          - tabpanel "账号登录" [ref=f1724e53]:
+            - generic [ref=f1724e54]:
+              - textbox "请输入用户名" [ref=f1724e59]
+              - textbox "请输入密码" [ref=f1724e64]
+              - button "登 录" [ref=f1724e65] [cursor=pointer]
+        - paragraph [ref=f1724e67]: 本系统输出仅为健康科普参考不能替代执业医师诊断

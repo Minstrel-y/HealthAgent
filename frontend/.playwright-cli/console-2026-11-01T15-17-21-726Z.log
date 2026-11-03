@@ -1,0 +1,3 @@
+[ 1416629ms] [ERROR] AxiosError: Network Error @ http://127.0.0.1:8124/assets/index-CrrZk7ES.js:2212
+[ 1715024ms] [ERROR] [GlobalError] https://vuejs.org/error-reference/#runtime-m AxiosError: Network Error @ http://127.0.0.1:8124/assets/index-DhD5Ac4e.js:166218
+[ 1755565ms] [ERROR] [GlobalError] https://vuejs.org/error-reference/#runtime-m AxiosError: Network Error @ http://127.0.0.1:8124/assets/index-DhD5Ac4e.js:166218

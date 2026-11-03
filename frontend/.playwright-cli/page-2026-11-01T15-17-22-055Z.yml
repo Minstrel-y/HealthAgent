@@ -1,0 +1,55 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 🩺
+      - generic [ref=e7]:
+        - generic [ref=e8]: 康鉴智航
+        - generic [ref=e9]: 健康干预 AI 智能体
+    - generic [ref=e10]:
+      - link "U 个人设置" [ref=e11]:
+        - /url: /settings
+        - generic [ref=e12]: U
+        - generic [ref=e14]: 个人设置
+      - button "退出" [ref=e15] [cursor=pointer]
+  - generic [ref=e17]:
+    - navigation [ref=e18]:
+      - link "◲ 报告总览" [ref=e19]:
+        - /url: /overview
+        - generic [ref=e20]: ◲
+        - generic [ref=e21]: 报告总览
+      - link "✎ 录入体检" [ref=e22]:
+        - /url: /entry
+        - generic [ref=e23]: ✎
+        - generic [ref=e24]: 录入体检
+      - link "◹ 指标趋势" [ref=e25]:
+        - /url: /trend
+        - generic [ref=e26]: ◹
+        - generic [ref=e27]: 指标趋势
+      - link "▤ 历史档案" [ref=e28]:
+        - /url: /history
+        - generic [ref=e29]: ▤
+        - generic [ref=e30]: 历史档案
+      - link "◍ AI 问答" [ref=e31]:
+        - /url: /chat
+        - generic [ref=e32]: ◍
+        - generic [ref=e33]: AI 问答
+      - link "⚙ 个人设置" [ref=e34]:
+        - /url: /settings
+        - generic [ref=e35]: ⚙
+        - generic [ref=e36]: 个人设置
+      - button "«" [ref=e37] [cursor=pointer]
+    - main [ref=e38]:
+      - generic [ref=e40]:
+        - generic [ref=e41]: 康鉴智航
+        - generic [ref=e42]: 健康干预 AI 智能体 · 登录
+        - generic [ref=e43]:
+          - tablist [ref=e47]:
+            - tab "账号登录" [selected] [ref=e49]
+            - tab "注册" [ref=e50]
+            - tab "微信登录" [ref=e51]
+          - tabpanel "账号登录" [ref=e53]:
+            - generic [ref=e54]:
+              - textbox "请输入用户名" [ref=e59]
+              - textbox "请输入密码" [ref=e64]
+              - button "登 录" [ref=e65] [cursor=pointer]
+        - paragraph [ref=e67]: 本系统输出仅为健康科普参考不能替代执业医师诊断
