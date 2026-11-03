@@ -1,15 +1,113 @@
-backend/.env
-backend/health.db
-backend/health.db-wal
-backend/health.db-shm
-backend/__pycache__/
-backend/routers/__pycache__/
-backend/*.log
-backend/.venv/
 
-frontend/node_modules/
-frontend/dist/
-frontend/.tmp/
-
+# ==========================================
+# 1. macOS 系统文件
+# ==========================================
 .DS_Store
-_t_*.json
+.AppleDouble
+.LSOverride
+._*
+
+# ==========================================
+# 2. IDE / 编辑器配置
+# ==========================================
+.idea/
+.vscode/
+*.iml
+*.sublime-workspace
+*.swp
+*.swo
+
+# ==========================================
+# 3. Node.js / Vue / Vite 前端
+# ==========================================
+node_modules/
+dist/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# 保留依赖锁定文件
+!package-lock.json
+!pnpm-lock.yaml
+!yarn.lock
+
+# ==========================================
+# 4. Python / FastAPI 后端
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python 虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# Python 包构建文件
+build/
+develop-eggs/
+dist-python/
+downloads/
+eggs/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# 5. 环境变量及敏感信息
+# ==========================================
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# 私钥及证书
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ==========================================
+# 6. 数据库文件
+# ==========================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# ==========================================
+# 7. 日志文件
+# ==========================================
+*.log
+logs/
+
+# ==========================================
+# 8. 临时文件及缓存
+# ==========================================
+*.tmp
+*.temp
+*.bak
+*.old
+.cache/
+.temp/
+
+# ==========================================
+# 9. 测试及覆盖率
+# ==========================================
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# ==========================================
+# 10. 操作系统其他文件
+# ==========================================
+Thumbs.db
+Desktop.ini
