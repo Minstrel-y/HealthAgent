@@ -23,6 +23,7 @@
 node_modules/
 dist/
 .vite/
+vite.config.js.timestamp-*.mjs
 *.local
 npm-debug.log*
 yarn-debug.log*
@@ -82,6 +83,9 @@ htmlcov/
 *.db-shm
 *.db-wal
 
+# 运行时上传文件
+uploads/
+
 # ==========================================
 # 7. 日志文件
 # ==========================================
@@ -97,6 +101,8 @@ logs/
 *.old
 .cache/
 .temp/
+.tmp/
+.playwright-cli/
 
 # ==========================================
 # 9. 测试及覆盖率
