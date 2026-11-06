@@ -28,7 +28,7 @@ def _latest_parsed(username: str, record_id: int = None):
 def list_metrics(_: str = Depends(current_user)):
     """列出指标库支持的所有指标（名称、单位、参考区间），录入表单据此动态生成字段。"""
     return {
-        "keys": list(rules.RULES.keys()),
+        "keys": list(refs.METRICS.keys()),
         "metrics": [
             {
                 "key": k,

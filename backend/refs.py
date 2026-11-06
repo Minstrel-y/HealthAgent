@@ -69,6 +69,22 @@ METRIC_ANCHOR = {
     "bmi": "body",
 }
 
+# 检查类型用于录入筛选，不改变原有医学科室及判读规则。
+CHECK_TYPES = {
+    # 预设只展示常见项目，避免一打开就出现全部指标；切换分类不清除已输入的值。
+    "general": {"name": "常规体检", "keys": ["bmi", "sbp", "dbp", "fast_glucose", "tg", "tc", "alt", "creatinine"]},
+    "all": {"name": "全部已支持指标", "keys": list(METRICS)},
+    "blood": {"name": "血常规", "keys": ["hgb", "wbc", "plt"]},
+    "liver": {"name": "肝功能", "keys": ["alt", "ast", "ggt", "tbill"]},
+    "kidney": {"name": "肾功能", "keys": ["uric_acid", "creatinine", "bun"]},
+    "lipid": {"name": "血脂检查", "keys": ["tg", "non_hdl", "tc", "ldl", "hdl"]},
+    "glucose": {"name": "血糖检查", "keys": ["fast_glucose", "hba1c"]},
+    "thyroid": {"name": "甲状腺检查", "keys": ["tsh"]},
+    "endocrine": {"name": "内分泌科检查", "keys": ["fast_glucose", "hba1c", "tsh", "bmi"]},
+    "cardio": {"name": "血压与体格", "keys": ["sbp", "dbp", "bmi"]},
+    "other": {"name": "其他检查", "keys": []},
+}
+
 DEPARTMENTS = [
     ("心血管内科", ["sbp", "dbp", "ldl", "hdl", "tc"]),
     ("内分泌科",   ["bmi", "fast_glucose", "hba1c"]),
@@ -190,10 +206,25 @@ def build_departments(parsed: dict):
     rest = [k for k in parsed
             if k not in NON_METRIC_KEYS and k not in used
             and parsed[k] is not None and isinstance(parsed[k], (int, float))]
+    other_items = []
     if rest:
         order = {"danger": 0, "warning": 1, "low": 2, "normal": 3}
         rest.sort(key=lambda k: order.get(metric_status(k, parsed[k], sex) if k in METRICS else "none", 4))
-        groups.append({"name": OTHER_DEPT, "items": [_item(k, parsed[k], sex) for k in rest]})
+        other_items.extend(_item(k, parsed[k], sex) for k in rest)
+
+    # 自定义指标的名字、单位、参考范围随记录保存，但不进行医学状态推断。
+    for i, custom in enumerate(parsed.get("_custom_metrics") or []):
+        if not isinstance(custom, dict) or not isinstance(custom.get("value"), (int, float)):
+            continue
+        other_items.append({
+            "key": f"custom_{i}", "name": custom.get("name", "其他指标"),
+            "value": custom["value"], "unit": custom.get("unit", ""),
+            "reference": custom.get("reference", ""),
+            "status": "none", "status_label": "未判读", "dev": 0.0,
+            "anchor": None, "known": False,
+        })
+    if other_items:
+        groups.append({"name": OTHER_DEPT, "items": other_items})
     return groups
 
 

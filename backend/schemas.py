@@ -45,6 +45,8 @@ class RecordIn(BaseModel):
     raw_text: str = ""
     extra_text: str = ""
     metrics: MetricsIn | None = None
+    check_type: str = "general"
+    custom_metrics: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ProfileIn(BaseModel):
@@ -73,3 +75,5 @@ class RecordUpdateIn(BaseModel):
     """修改已有记录：结构化指标全量覆盖，原文可选。"""
     raw_text: str = ""
     metrics: dict[str, Any] = Field(default_factory=dict)
+    check_type: str | None = None
+    custom_metrics: list[dict[str, Any]] | None = None

@@ -61,6 +61,7 @@ export const api = {
   insights: (recordId) => http.get('/rules/insights/latest', { params: recordId ? { record_id: recordId } : {} }),
   metricRule: (key) => http.get(`/rules/${key}`),
   metricCatalog: () => http.get('/rules/metrics'),
+  checkTypes: () => http.get('/check-types'),
   health: () => http.get('/health')
 }
 

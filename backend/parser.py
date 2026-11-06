@@ -80,6 +80,10 @@ def build_history_text(records: list, max_records: int = 8) -> str:
     lines = []
     for r in records[-max_records:]:
         parsed = r.get("parsed_data") or {}
-        items = ", ".join(f"{k}={v}" for k, v in parsed.items() if v is not None)
-        lines.append(f"{r.get('record_time', '未知时间')}: {items or '无指标'}")
+        # 结构化元数据不是测量项，不能把 Python repr 原样送进大模型。
+        items = [f"{k}={v}" for k, v in parsed.items() if not k.startswith("_") and v is not None]
+        for metric in (parsed.get("_custom_metrics") or []):
+            if isinstance(metric, dict) and metric.get("name") and metric.get("value") is not None:
+                items.append(f"{metric['name']}={metric['value']} {metric.get('unit', '')}(未判读)")
+        lines.append(f"{r.get('record_time', '未知时间')}: {', '.join(items) or '无指标'}")
     return "\n".join(lines)

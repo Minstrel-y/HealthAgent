@@ -12,7 +12,7 @@
         <div class="page-head">
           <div>
             <div class="page-title">最近体检报告</div>
-            <div class="muted">体检时间：{{ data.record_time }} · 已存入历史档案</div>
+            <div class="muted">体检时间：{{ data.record_time }} · 检查类型：{{ data.check_type_name || '常规体检' }} · 已存入历史档案</div>
           </div>
           <el-button size="small" :loading="loading" @click="load">刷新数据</el-button>
         </div>
@@ -27,9 +27,9 @@
               <div class="fx-cap">HEALTH PROFILE <i>01</i></div>
               <div class="fx-title">个人健康概况</div>
               <div class="fx-big">
-                {{ data.score }}<span class="fx-unit">/ 100</span>
+                {{ data.score == null ? '—' : data.score }}<span class="fx-unit" v-if="data.score != null">/ 100</span>
               </div>
-              <div class="fx-sub">{{ data.score_label }} · 满分 100</div>
+              <div class="fx-sub">{{ data.score_label }} · {{ data.score == null ? '仅展示未判读项目' : '已收录指标参与评分' }}</div>
               <div class="fx-rows">
                 <div class="fx-row"><span>体检时间</span><b>{{ data.record_time }}</b></div>
                 <div class="fx-row"><span>风险等级</span>
@@ -43,7 +43,7 @@
               <div class="fx-title">指标监测</div>
               <div class="fx-signal-head">
                 <div class="fx-num" :style="{ color: abnormalCountColor }">{{ data.abnormal_count }}<span class="fx-unit">项</span></div>
-                <div class="fx-sub">异常指标 · {{ data.abnormal_count ? '建议关注' : '全部正常' }}</div>
+                <div class="fx-sub">异常指标 · {{ !data.scorable_count ? '暂无可自动判读指标' : (data.abnormal_count ? '建议关注' : '已评分指标无异常') }}</div>
               </div>
               <div class="fx-signal">
                 <svg viewBox="0 0 240 64" preserveAspectRatio="none" class="sig-svg" aria-hidden="true">
@@ -103,7 +103,7 @@
 
           <!-- 中：全息人体 -->
           <div class="hero-center">
-            <BodyMap2D solo :departments="data.departments" />
+            <BodyMap2D solo :departments="mapDepartments" />
           </div>
 
           <!-- 右列 -->
@@ -112,9 +112,9 @@
               <div class="fx-cap">STATUS OVERVIEW <i>04</i></div>
               <div class="fx-title">健康状态</div>
               <div class="fx-big">
-                {{ data.score }}<span class="fx-unit">/ 100</span>
+                {{ data.score == null ? '—' : data.score }}<span class="fx-unit" v-if="data.score != null">/ 100</span>
               </div>
-              <div class="fx-bar-track"><i :style="{ width: data.score + '%' }"></i></div>
+              <div class="fx-bar-track"><i :style="{ width: (data.score ?? 0) + '%' }"></i></div>
               <div class="fx-rows">
                 <div class="fx-row"><span>综合风险</span>
                   <b><em class="risk" :class="data.report ? data.report.risk_level : 'medium'">{{ riskText }}</em></b>
@@ -169,10 +169,11 @@
                     <span style="font-weight:600;color:var(--ink);">{{ d.name }}</span>
                     <span class="muted" style="margin-left:10px;">{{ d.items.length }} 项</span>
                     <span v-if="d.abnormal" class="tag danger" style="margin-left:8px;">{{ d.abnormal }} 项需关注</span>
-                    <span v-else class="tag normal" style="margin-left:8px;">全部正常</span>
+                    <span v-else-if="d.items.some(it => it.known)" class="tag normal" style="margin-left:8px;">无已判读异常</span>
+                    <span v-else class="tag" style="margin-left:8px;">未判读</span>
                   </template>
                   <div class="metric-row" v-for="it in d.items" :key="it.key">
-                    <span>{{ it.name }}</span>
+                    <span>{{ it.name }}<small v-if="it.reference" class="muted" style="display:block;font-weight:normal">参考：{{ it.reference }}（仅供核对）</small></span>
                     <span class="muted">{{ it.value }}<span v-if="it.unit"> {{ it.unit }}</span></span>
                     <span><em class="tag" :class="it.status">{{ it.status_label }}</em></span>
                   </div>
@@ -187,7 +188,7 @@
             <ChatBox :record-id="data.record_id" height="620px" />
           </div>
 
-        <p class="muted" style="margin-top:16px;">本结果由 AI 生成，仅为健康科普参考，不能替代执业医师诊断。</p>
+        <p class="muted" style="margin-top:16px;">指标状态与评分仅基于已收录的确定性规则；标注「未判读」的项目仅展示原始测量结果。AI 解读仅供健康科普参考，不能替代执业医师诊断。</p>
       </template>
     </template>
   </div>
@@ -205,7 +206,7 @@ const data = ref({ empty: true })
 const genLoading = ref(false)
 
 const RISK_TEXT = { low: '低风险', medium: '中风险', high: '高风险' }
-const riskText = computed(() => RISK_TEXT[data.value.report?.risk_level] || '中风险')
+const riskText = computed(() => !data.value.scorable_count ? '缺少可判读指标' : (data.value.report ? (RISK_TEXT[data.value.report?.risk_level] || '需结合报告') : '尚未评估'))
 
 // KPI 卡顶部状态色条
 const abnormalTone = computed(() => {
@@ -249,6 +250,10 @@ const mergedDepartments = computed(() => {
 
 // ---- hero 三栏布局用的派生数据 ----
 const allItems = computed(() => (data.value.departments || []).flatMap((d) => d.items))
+// 人体光点只接收已有锚点的规则库指标，自定义项目只在详细列表中显示。
+const mapDepartments = computed(() => (data.value.departments || [])
+  .map(d => ({ ...d, items: d.items.filter(it => it.anchor) }))
+  .filter(d => d.items.length))
 
 // 系统分析卡：完全数据驱动——按「偏高 > 临界 > 偏低 > 正常」排序取前 6 条，
 // 后端新增任何指标都会自动参与排序并上榜，前端没有硬编码顺序。
@@ -289,7 +294,8 @@ function smoothPath(pts) {
 }
 
 const signalPts = computed(() => {
-  const items = allItems.value
+  // 未判读的指标没有有效的标准化偏差，不得画进异常信号曲线。
+  const items = allItems.value.filter(it => it.known)
   if (!items.length) return []
   const W = 240, H = 64, padX = 6, padY = 8
   const n = items.length

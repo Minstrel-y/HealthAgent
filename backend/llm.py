@@ -1,5 +1,6 @@
 """大模型层：所有 dashscope 调用集中在这里，路由层不直接接触模型。"""
 import json
+import math
 import re
 import time
 
@@ -82,21 +83,52 @@ _METRIC_HINT = "；".join(
     for k, m in METRICS.items()
 )
 
-EXTRACT_SYSTEM_PROMPT = f"""你是体检报告信息抽取助手。抽出指标后只输出 JSON，不要其他文字：
-{{"sex":"男或女","age":数字,"height_cm":数字,"weight_kg":数字,{_JSON_FIELDS}}}
-字段含义：{_METRIC_HINT}；height_cm 身高厘米、weight_kg 体重公斤。
+EXTRACT_SYSTEM_PROMPT = f"""你是体检报告信息抽取助手。只输出 JSON，不要其他文字。
+JSON 示例结构：{{"sex":"男或女","age":数字,"height_cm":数字,"weight_kg":数字,{_JSON_FIELDS},"additional_metrics":[{{"name":"报告原文的项目名称","value":数字,"unit":"原始单位","reference":"原文参考范围"}}]}}
+已知字段：{_METRIC_HINT}；height_cm 身高厘米、weight_kg 体重公斤。
 规则：
-1. 只抽文本里确实写了的数值，没有的填 null，绝不推测编造。
-2. 数值不带单位。
-3. sbp 是收缩压/高压，dbp 是舒张压/低压；TG 也叫甘油三酯，ALT 也叫谷丙转氨酶，AST 也叫谷草转氨酶。
-4. 报告里出现、但上面没列出的其他检查项目也要抽出：键名用该项目中文名的英文/拼音小写（如 "afp"、"psa"），值为数值。"""
+1. 只抽原文确实出现的项目和数值；没有的填 null。不得推测或杜撰。
+2. 已知字段必须与上述单位一致才能填入，单位不一致则放到 additional_metrics，保留报告原值、原单位，不自行换算。
+3. sbp 为收缩压/高压，dbp 为舒张压/低压；不同检测方法的类似指标不可混淆。
+4. 不在已知字段中的**数值类**项目只放 additional_metrics，保留中文原名、数值、单位和参考范围（没有则留空）；不要自造英文 key。
+5. 定性结果、影像描述不要放 additional_metrics；不要拿参考区间数字当成检测值。
+6. 同一项目只出现一次，输出标准 JSON。"""
 
 OCR_PROMPT = (
     "读取这张体检报告图片，只输出 JSON，不要其他文字：\n"
-    '{"sex":"男或女","age":数字,"height_cm":数字,"weight_kg":数字,' + _JSON_FIELDS + "}\n"
-    "规则：sex 只能男或女；数值不带单位；图中没有的填 null；"
-    "身高厘米、体重公斤，尿酸/肌酐/总胆红素 μmol/L，血红蛋白 g/L，白细胞与血小板 10^9/L。"
+    '{"sex":"男或女","age":数字,"height_cm":数字,"weight_kg":数字,' + _JSON_FIELDS + ',"additional_metrics":[{"name":"项目原名","value":数字,"unit":"原始单位","reference":"原文参考范围"}]}\n'
+    "只提取确实看清的患者结果，没有填 null，不要把参考范围当成检测值。"
+    "标准字段的数值必须匹配指标库给定单位，不匹配则放到 additional_metrics 保留原单位与原数值，禁止自行换算。"
+    "不在字段列表中的数值类项目放 additional_metrics，保留中文项目名/单位/参考范围；定性结果、影像文本不要放数组；勿重复已知项目。"
 )
+
+
+def _additional_metrics(raw_items, source_text="") -> list:
+    """未知数值项保留名称与单位；不尝试为其构造医学参考区间或判读。"""
+    result, seen = [], set()
+    known_names = {re.sub(r"\s+", "", m["name"]).lower() for m in METRICS.values()}
+    known_names.update(METRICS)
+    for item in raw_items if isinstance(raw_items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()[:100]
+        val = _to_num(item.get("value"))
+        if not name or val is None or not math.isfinite(val):
+            continue
+        if re.sub(r"\s+", "", name).lower() in known_names:
+            continue
+        if source_text:
+            variants = {f"{val:g}", f"{val:.1f}", f"{val:.2f}"}
+            if not any(v in source_text for v in variants):
+                continue
+        signature = (name.lower(), str(item.get("unit") or "").strip())
+        if signature in seen:
+            continue
+        seen.add(signature)
+        result.append({"name": name, "value": round(val, 4),
+                       "unit": str(item.get("unit") or "").strip()[:40],
+                       "reference": str(item.get("reference") or "").strip()[:100]})
+    return result[:100]
 
 
 def _normalize_metrics(raw: dict, source_text: str = "") -> dict:
@@ -126,21 +158,28 @@ def _normalize_metrics(raw: dict, source_text: str = "") -> dict:
                 continue
         out[field] = round(num, 2)
 
-    # 报告里有、但指标库还没登记的项目：保留原始数值，页面上标"未判读"而不是直接丢掉
+    # 未收录的项目走独立结构，不当作指标库内的已判读指标。
+    custom = _additional_metrics(raw.get("additional_metrics"), source_text)
+    # 兼容旧模型响应：未收录的英文数值 key 仍作为「未判读」项目保留。
+    extra_old = []
     for key, value in raw.items():
-        if key in _METRIC_ALIASES or key in ("sex", "age"):
+        if key in _METRIC_ALIASES or key in ("sex", "age", "additional_metrics"):
             continue
         if not re.fullmatch(r"[a-z][a-z0-9_]{1,23}", str(key)):
             continue
-        try:
-            num = float(value)
-        except (TypeError, ValueError):
+        num = _to_num(value)
+        if num is None or not math.isfinite(num):
             continue
-        if source_text:
-            variants = {f"{num:g}", f"{num:.1f}", f"{num:.2f}"}
-            if not any(v and v in source_text for v in variants):
-                continue
-        out[str(key)] = round(num, 2)
+        extra_old.append({"name": key, "value": num, "unit": "", "reference": ""})
+    custom.extend(_additional_metrics(extra_old, source_text))
+    if custom:
+        seen, unique = set(), []
+        for item in custom:
+            name = item["name"].lower()
+            if name not in seen:
+                seen.add(name)
+                unique.append(item)
+        out["_custom_metrics"] = unique[:100]
     return out
 
 
@@ -188,16 +227,8 @@ def ocr_image_base64(b64: str, mime: str = "image/png") -> dict:
                 last_err = f"{model}: 未返回 JSON"
                 continue
             raw = json.loads(m.group(0))
-            out = {}
-            for key, field in _METRIC_ALIASES.items():
-                if key == "sex":
-                    if raw.get("sex") in ("男", "女"):
-                        out["sex"] = "male" if raw["sex"] == "男" else "female"
-                    continue
-                num = _to_num(raw.get(key))
-                if num is not None:
-                    out[field] = num
-            if out:
+            out = _normalize_metrics(raw)
+            if any(k != "_custom_metrics" for k in out) or out.get("_custom_metrics"):
                 return out
             last_err = f"{model}: 未识别到任何指标"
         except Exception as e:
@@ -252,7 +283,8 @@ REPORT_SYSTEM_PROMPT = """你是健康体检AI分析助手。系统已完成指�
 1. departments 只覆盖用户实际有指标的科室，科室名必须从给定列表中选择。
 2. risk_level 依据异常项数量与程度判断。
 3. 建议具体可执行（饮食、运动、复查项目与时间），不要空话。
-4. 你输出的内容仅为健康科普参考，不能替代执业医师诊断——请在 advice 中体现需要就医的情形。"""
+4. 标为「未判读」的自定义项目没有经过参考区间核验：不得给它判定偏高、偏低、正常或由此推断疾病，只能建议结合原报告咨询医生。
+5. 你输出的内容仅为健康科普参考，不能替代执业医师诊断——请在 advice 中体现需要就医的情形。"""
 
 
 def generate_report(parsed: dict, history_text: str, extra_text: str = "") -> dict:
