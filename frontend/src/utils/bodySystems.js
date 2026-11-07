@@ -5,7 +5,7 @@
  */
 export const BODY_SYSTEMS = Object.freeze([
   { key: 'thyroid', label: '甲状腺', area: '颈部', x: 49.5, y: 20.5, hint: '甲状腺相关检验' },
-  { key: 'cardio', label: '心血管', area: '胸部', x: 50.5, y: 30.0, hint: '血压等心血管相关指标' },
+  { key: 'cardio', label: '心血管', area: '胸部', x: 50.5, y: 30.0, hint: '血压与心肌相关检查；LDH 非心肌特异性，点位只是导航入口' },
   { key: 'blood', label: '血液 / 造血', area: '胸骨示意区', x: 42.5, y: 31.5, hint: '血常规为全身循环血液检查，光点仅是导航入口' },
   { key: 'lipid', label: '血脂代谢', area: '胸部示意区', x: 58.0, y: 34.2, hint: '血脂属于全身代谢指标，并不代表局部器官状态' },
   { key: 'liver', label: '肝脏', area: '上腹部', x: 43.0, y: 41.5, hint: '肝功能相关检验' },
@@ -15,13 +15,15 @@ export const BODY_SYSTEMS = Object.freeze([
 ])
 
 const METRIC_SYSTEM = {
-  tsh: 'thyroid',
-  sbp: 'cardio', dbp: 'cardio',
+  tsh: 'thyroid', ft3: 'thyroid', ft4: 'thyroid',
+  sbp: 'cardio', dbp: 'cardio', ldh: 'cardio', ctnt: 'cardio',
   hgb: 'blood', wbc: 'blood', plt: 'blood',
+  rbc: 'blood', hct: 'blood', mcv: 'blood', mch: 'blood', mchc: 'blood',
   tg: 'lipid', non_hdl: 'lipid', tc: 'lipid', ldl: 'lipid', hdl: 'lipid',
   alt: 'liver', ast: 'liver', ggt: 'liver', tbill: 'liver',
+  pa: 'liver', tp: 'liver', alb: 'liver', dbil: 'liver', alp: 'liver', tba: 'liver', che: 'liver', ibil: 'liver',
   fast_glucose: 'pancreas', hba1c: 'pancreas',
-  uric_acid: 'kidney', creatinine: 'kidney', bun: 'kidney',
+  uric_acid: 'kidney', creatinine: 'kidney', bun: 'kidney', beta2_mg: 'kidney',
   bmi: 'body'
 }
 

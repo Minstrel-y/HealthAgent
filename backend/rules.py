@@ -549,7 +549,7 @@ def _trend(key: str, parsed: dict) -> str:
     """判断某个指标在本次数据中的方向：high / low / normal / none。"""
     if key not in parsed or parsed[key] is None:
         return "none"
-    return refs.metric_status(key, parsed[key], parsed.get("sex", "unknown"))
+    return refs.metric_status(key, parsed[key], parsed.get("sex", "unknown"), parsed)
 
 
 def _match_condition(when: dict, parsed: dict) -> bool:
@@ -636,7 +636,7 @@ def build_insights(parsed: dict):
     for key in refs.METRICS:
         if key not in parsed or parsed[key] is None:
             continue
-        status = refs.metric_status(key, parsed[key], parsed.get("sex", "unknown"))
+        status = refs.metric_status(key, parsed[key], parsed.get("sex", "unknown"), parsed)
         if status not in ("warning", "danger", "low"):
             continue
         rule = metric_rule(key, parsed) or fallback_rule(key, status)

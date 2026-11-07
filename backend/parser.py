@@ -23,7 +23,26 @@ FIELD_KEYWORDS = {
     "ggt": r"GGT|谷氨酰转肽酶|γ-?谷氨酰",
     "tbill": r"总胆红素|TBIL",
     "bun": r"尿素氮|BUN|尿素",
-    "tsh": r"促甲状腺激素|TSH",
+    "tsh": r"促甲状腺激素|(?<![a-z])TSH(?![a-z])",
+    # 《医学指标及其建议.xlsx》新增的 18 个指标：本地兜底仅做初步提取，保存前仍需核对单位。
+    "ft3": r"游离三碘甲状腺原氨酸|(?<![a-z])FT3(?![a-z])",
+    "ft4": r"游离四碘甲状腺素|(?<![a-z])FT4(?![a-z])",
+    "pa": r"前白蛋白|(?<![a-z])PA(?![a-z])",
+    "tp": r"总蛋白|(?<![a-z])TP(?![a-z])",
+    "alb": r"(?<!前)白蛋白|(?<![a-z])ALB(?![a-z])",
+    "dbil": r"直接胆红素|(?<![a-z])DBIL(?![a-z])",
+    "alp": r"碱性磷酸酶|(?<![a-z])ALP(?![a-z])",
+    "tba": r"总胆汁酸|(?<![a-z])TBA(?![a-z])",
+    "che": r"胆碱酯酶|(?<![a-z])CHE(?![a-z])",
+    "ibil": r"间接胆红素|(?<![a-z])I-?BIL(?![a-z])",
+    "beta2_mg": r"(?:β2|β₂|B2)[-－]?微球蛋白|(?<![a-z])(?:β2-MG|B2-MG)(?![a-z])",
+    "ldh": r"乳酸脱氢酶|(?<![a-z])LDH(?![a-z])",
+    "ctnt": r"心肌肌钙蛋白(?:T)?|(?<![a-z])(?:hs-)?cTnT(?![a-z])",
+    "mcv": r"平均红细胞体积|(?<![a-z])MCV(?![a-z])",
+    "mchc": r"平均红细胞血红蛋白浓度|(?<![a-z])MCHC(?![a-z])",
+    "mch": r"平均红细胞血红蛋白量|(?<![a-z])MCH(?![a-z])",
+    "hct": r"红细胞压积|(?<![a-z])HCT(?![a-z])",
+    "rbc": r"红细胞计数|(?<![a-z])RBC(?![a-z])",
 }
 
 
@@ -34,14 +53,22 @@ def _norm(text: str) -> str:
 
 
 def _first_num_after(text: str, keyword: str):
-    # 关键词含 | 必须用非捕获分组，否则交替会剥掉后面的数字组
-    pattern = rf"(?:{keyword})[^0-9\-]{{0,12}}({NUM})"
-    m = re.search(pattern, text, flags=re.IGNORECASE)
-    if not m or m.group(1) is None:
+    """优先读关键词同一段冒号后的结果，避免把 FT4、β2-MG 名称中的数字当成测量值。"""
+    match = re.search(rf"(?:{keyword})", text, flags=re.IGNORECASE)
+    if not match:
+        return None
+    # 区分字段与后续字段；无冒号的简写报告再使用旧式宽松查找。
+    tail = re.split(r"[;\n,]", text[match.end():match.end() + 80], maxsplit=1)[0]
+    colon = tail.find(":")
+    if 0 <= colon <= 28:
+        value_m = re.search(NUM, tail[colon + 1:])
+    else:
+        value_m = re.search(rf"[^0-9\-]{{0,12}}{NUM}", tail)
+    if not value_m:
         return None
     try:
-        return float(m.group(1))
-    except ValueError:
+        return float(value_m.group(1))
+    except (ValueError, TypeError):
         return None
 
 
@@ -52,6 +79,12 @@ def parse_health_text(raw_text: str) -> dict:
         value = _first_num_after(text, keyword)
         if value is not None:
             data[field] = value
+    # HCT 标准化输入为 L/L；报告写 42% 时换算为 0.42。
+    # 局部降级解析只处理这一项明确的等价单位；其他单位不确定时应人工核对。
+    if "hct" in data:
+        m = re.search(r"(?:红细胞压积|\bHCT\b)[^0-9]{0,12}\d+(?:\.\d+)?\s*%", text, re.I)
+        if m:
+            data["hct"] = round(data["hct"] / 100, 4)
 
     m_h = re.search(r"(\d{2,3}(?:\.\d+)?)\s*cm", text, flags=re.IGNORECASE)
     m_w = re.search(r"(\d{2,3}(?:\.\d+)?)\s*kg", text, flags=re.IGNORECASE)

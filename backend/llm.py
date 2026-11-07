@@ -63,6 +63,8 @@ def _extract_json(text: str):
 # 可抽取的字段随 refs.METRICS 自动扩展：新增指标只要登记进指标库，抽取、判读、
 # 身体图光点、科室分组都会自动跟上，不需要再改这里。
 _EXTRA_ALIASES = {
+    "beta_2_mg": "beta2_mg", "b2mg": "beta2_mg", "beta2mg": "beta2_mg",
+    "indirect_bilirubin": "ibil", "i_bil": "ibil", "dbill": "dbil", "hs_ctnt": "ctnt",
     "hba1_c": "hba1c", "hb_a1c": "hba1c", "glycated_hemoglobin": "hba1c",
     "tbil": "tbill", "total_bilirubin": "tbill",
     "urea": "bun", "urea_nitrogen": "bun",
@@ -88,7 +90,7 @@ JSON 示例结构：{{"sex":"男或女","age":数字,"height_cm":数字,"weight_
 已知字段：{_METRIC_HINT}；height_cm 身高厘米、weight_kg 体重公斤。
 规则：
 1. 只抽原文确实出现的项目和数值；没有的填 null。不得推测或杜撰。
-2. 已知字段必须与上述单位一致才能填入，单位不一致则放到 additional_metrics，保留报告原值、原单位，不自行换算。
+2. 已知字段必须与上述单位一致才能填入（BMI 可不注明 kg/m²）；单位不一致则放到 additional_metrics，保留报告原值、原单位，不自行换算。
 3. sbp 为收缩压/高压，dbp 为舒张压/低压；不同检测方法的类似指标不可混淆。
 4. 不在已知字段中的**数值类**项目只放 additional_metrics，保留中文原名、数值、单位和参考范围（没有则留空）；不要自造英文 key。
 5. 定性结果、影像描述不要放 additional_metrics；不要拿参考区间数字当成检测值。
@@ -156,7 +158,7 @@ def _normalize_metrics(raw: dict, source_text: str = "") -> dict:
             variants = {f"{num:g}", f"{num:.1f}", f"{num:.2f}", str(int(num)) if num == int(num) else ""}
             if not any(v and v in source_text for v in variants):
                 continue
-        out[field] = round(num, 2)
+        out[field] = round(num, 4)
 
     # 未收录的项目走独立结构，不当作指标库内的已判读指标。
     custom = _additional_metrics(raw.get("additional_metrics"), source_text)

@@ -46,10 +46,25 @@
           <el-col :xs="24" :sm="12" :md="6"><el-form-item label="身高 (cm)"><el-input-number v-model="form.height" :min="80" :max="230" controls-position="right" /></el-form-item></el-col>
           <el-col :xs="24" :sm="12" :md="6"><el-form-item label="体重 (kg)"><el-input-number v-model="form.weight" :min="20" :max="200" controls-position="right" /></el-form-item></el-col>
         </el-row>
+        <el-row v-if="visibleFields.some(f => f.key === 'tsh') || form.tsh != null" :gutter="12">
+          <el-col :xs="24" :sm="12" :md="12">
+            <el-form-item label="TSH 检测系统">
+              <el-select v-model="labSystem" clearable placeholder="请选择报告中的检验设备；未知可不选" style="width:100%">
+                <el-option v-for="sys in ['罗氏','贝克曼','雅培','西门子','迈瑞','安图','迈克','新产业']" :key="sys" :label="sys" :value="sys" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12" :md="12"><span class="muted">未知检测系统时 TSH 仅保存数值，不参与自动判读或评分。</span></el-col>
+        </el-row>
         <el-alert v-if="hiddenFilledCount" type="info" :closable="false" style="margin-bottom:12px" :title="`其他分类还有 ${hiddenFilledCount} 项已填写指标，保存时会一并提交`" />
         <el-row :gutter="12">
           <el-col v-for="field in visibleFields" :key="field.key" :xs="24" :sm="12" :md="8">
-            <el-form-item :label="field.label"><el-input-number v-model="form[field.key]" :min="field.min" :max="field.max" :step="0.1" :precision="2" controls-position="right" style="width:100%" /></el-form-item>
+            <el-form-item :label="field.label">
+              <el-input-number v-model="form[field.key]" :min="field.min" :max="field.max" :step="0.1" :precision="4" controls-position="right" style="width:100%" />
+              <el-tooltip v-if="field.referenceNote" :content="field.referenceNote" placement="top" :show-after="250">
+                <span class="muted" style="font-size:11px;cursor:help;">参考区间说明 ⓘ</span>
+              </el-tooltip>
+            </el-form-item>
           </el-col>
         </el-row>
         <el-divider content-position="left">其他数值指标（未纳入规则库，不参与自动判读与评分）</el-divider>
@@ -89,19 +104,21 @@ const recognizing = ref(false)
 const fileName = ref('')
 const previewUrl = ref('')
 const checkType = ref('general')
+const labSystem = ref('')
 const customMetrics = ref([])
 const form = reactive({ sex: null, age: null, height: null, weight: null })
 const fields = ref([])
 const checkTypes = ref([
   { key: 'general', name: '常规体检', keys: ['bmi', 'sbp', 'dbp', 'fast_glucose', 'tg', 'tc', 'alt', 'creatinine'] },
   { key: 'all', name: '全部已支持指标', keys: [] },
-  { key: 'blood', name: '血常规', keys: ['hgb', 'wbc', 'plt'] },
-  { key: 'liver', name: '肝功能', keys: ['alt', 'ast', 'ggt', 'tbill'] },
-  { key: 'kidney', name: '肾功能', keys: ['uric_acid', 'creatinine', 'bun'] },
+  { key: 'blood', name: '血常规', keys: ['hgb', 'wbc', 'plt', 'rbc', 'hct', 'mcv', 'mch', 'mchc'] },
+  { key: 'liver', name: '肝功能', keys: ['alt', 'ast', 'ggt', 'tbill', 'pa', 'tp', 'alb', 'dbil', 'alp', 'tba', 'che', 'ibil'] },
+  { key: 'kidney', name: '肾功能', keys: ['uric_acid', 'creatinine', 'bun', 'beta2_mg'] },
+  { key: 'cardiac', name: '心肌功能', keys: ['ldh', 'ctnt'] },
   { key: 'lipid', name: '血脂检查', keys: ['tg', 'non_hdl', 'tc', 'ldl', 'hdl'] },
   { key: 'glucose', name: '血糖检查', keys: ['fast_glucose', 'hba1c'] },
-  { key: 'thyroid', name: '甲状腺检查', keys: ['tsh'] },
-  { key: 'endocrine', name: '内分泌科检查', keys: ['fast_glucose', 'hba1c', 'tsh', 'bmi'] },
+  { key: 'thyroid', name: '甲状腺检查', keys: ['tsh', 'ft3', 'ft4'] },
+  { key: 'endocrine', name: '内分泌科检查', keys: ['fast_glucose', 'hba1c', 'tsh', 'ft3', 'ft4', 'bmi'] },
   { key: 'cardio', name: '血压与体格', keys: ['sbp', 'dbp', 'bmi'] },
   { key: 'other', name: '其他检查', keys: [] }
 ])
@@ -130,7 +147,10 @@ const loadCatalog = async () => {
   const types = results[1].status === 'fulfilled' ? results[1].value : null
   if (Array.isArray(types?.types)) checkTypes.value = types.types
   if (Array.isArray(catalog?.metrics)) {
-    fields.value = catalog.metrics.map(m => ({ key: m.key, label: m.unit ? `${m.name} (${m.unit})` : m.name }))
+    fields.value = catalog.metrics.map(m => ({
+      key: m.key, label: m.unit ? `${m.name} (${m.unit})` : m.name,
+      referenceNote: m.reference_note || '', requiresLabRange: !!m.requires_lab_range
+    }))
     for (const f of fields.value) if (!(f.key in form)) form[f.key] = null
     // 异步加载之前已识别的字段也能显示出来。
     for (const [k, v] of Object.entries(recognized)) {
@@ -236,7 +256,7 @@ const submit = async () => {
     manual = collectMetrics()
     const metrics = { ...recognized, ...manual }
     const result = await api.createRecord({ raw_text: rawText.value.trim(), extra_text: extraText.value,
-      metrics, check_type: checkType.value, custom_metrics: custom })
+      metrics, check_type: checkType.value, lab_system: labSystem.value || null, custom_metrics: custom })
     if (result.report_error) ElMessage.warning('指标已保存，AI 解读暂不可用，可在总览页重试')
     else ElMessage.success('报告生成完成')
     router.replace('/overview')

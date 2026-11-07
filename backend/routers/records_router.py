@@ -13,7 +13,7 @@ import db
 import llm
 from auth import current_user
 from parser import build_history_text, parse_health_text
-from refs import METRICS, CHECK_TYPES, build_departments, count_abnormal, health_score, score_label
+from refs import METRICS, CHECK_TYPES, TSH_SYSTEM_RANGES, build_departments, count_abnormal, health_score, score_label, scorable_count
 from schemas import RecordIn, RecordUpdateIn
 
 router = APIRouter(prefix="/api", tags=["records"])
@@ -63,17 +63,19 @@ def clean_custom_metrics(items):
     return cleaned
 
 
-def attach_metadata(metrics, check_type, custom_metrics):
+def attach_metadata(metrics, check_type, custom_metrics, lab_system=None):
     result = dict(metrics)
     result["_check_type"] = check_type if check_type in CHECK_TYPES else "other"
+    # 与本次甲状腺报告匹配的检测系统，未选择时不进行 TSH 数值判读。
+    if lab_system in TSH_SYSTEM_RANGES:
+        result["_lab_system"] = lab_system
     result["_custom_metrics"] = clean_custom_metrics(custom_metrics)
     return result
 
 
 def score_or_none(data):
-    """未提供任何已纳入规则库的数值时，不展示虚假的 100 分。"""
-    return health_score(data) if any(k in METRICS and isinstance(v, (int, float))
-                                      for k, v in data.items()) else None
+    """只有存在可按明确参考区间判读的指标才计算评分。"""
+    return health_score(data) if scorable_count(data) else None
 
 
 def score_name(score):
@@ -83,6 +85,7 @@ def score_name(score):
 def record_metadata(parsed):
     key = parsed.get("_check_type", "general")
     return {"check_type": key, "check_type_name": CHECK_TYPES.get(key, CHECK_TYPES["other"])["name"],
+            "lab_system": parsed.get("_lab_system"),
             "custom_metrics": parsed.get("_custom_metrics") or []}
 
 
@@ -171,7 +174,7 @@ def create_record(body: RecordIn, username: str = Depends(current_user)):
     elif body.extra_text.strip():
         raw += f"\n其他检查项目：{body.extra_text.strip()}"
 
-    stored = attach_metadata(metrics, body.check_type, body.custom_metrics)
+    stored = attach_metadata(metrics, body.check_type, body.custom_metrics, body.lab_system)
     record_id = db.insert_record(username, raw, stored)
     records = db.get_records(username)
 
@@ -232,7 +235,8 @@ def update_record(record_id: int, body: RecordUpdateIn, username: str = Depends(
 
     metrics = clean_metrics(body.metrics)
     stored = attach_metadata(metrics, body.check_type or r["parsed_data"].get("_check_type", "general"),
-                             body.custom_metrics if body.custom_metrics is not None else r["parsed_data"].get("_custom_metrics", []))
+                             body.custom_metrics if body.custom_metrics is not None else r["parsed_data"].get("_custom_metrics", []),
+                             body.lab_system if body.lab_system is not None else r["parsed_data"].get("_lab_system"))
     if not metrics and not stored["_custom_metrics"]:
         raise HTTPException(400, "没有可用指标，请至少保留一项")
 
@@ -296,7 +300,7 @@ def overview(username: str = Depends(current_user)):
         "record_time": latest["record_time"],
         "metrics": parsed,
         **record_metadata(parsed),
-        "scorable_count": sum(1 for k in METRICS if isinstance(parsed.get(k), (int, float))),
+        "scorable_count": scorable_count(parsed),
         "departments": build_departments(parsed),
         "abnormal_count": count_abnormal(parsed),
         "score": score,

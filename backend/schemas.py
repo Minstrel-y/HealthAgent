@@ -46,6 +46,7 @@ class RecordIn(BaseModel):
     extra_text: str = ""
     metrics: MetricsIn | None = None
     check_type: str = "general"
+    lab_system: str | None = None
     custom_metrics: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -76,4 +77,5 @@ class RecordUpdateIn(BaseModel):
     raw_text: str = ""
     metrics: dict[str, Any] = Field(default_factory=dict)
     check_type: str | None = None
+    lab_system: str | None = None
     custom_metrics: list[dict[str, Any]] | None = None

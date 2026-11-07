@@ -37,6 +37,8 @@ def list_metrics(_: str = Depends(current_user)):
                 "low": m.get("low"),
                 "high": m.get("high"),
                 "has_rule": k in rules.RULES,
+                "requires_lab_range": bool(m.get("requires_lab_range")),
+                "reference_note": m.get("reference_note", ""),
             }
             for k, m in refs.METRICS.items()
         ],
