@@ -40,10 +40,10 @@
 
             <div class="fx-card">
               <div class="fx-cap">HEALTH SIGNAL <i>02</i></div>
-              <div class="fx-title">指标监测</div>
+              <div class="fx-title">{{ selectedSystem ? `${selectedSystem.label} · 指标监测` : '指标监测' }}</div>
               <div class="fx-signal-head">
-                <div class="fx-num" :style="{ color: abnormalCountColor }">{{ data.abnormal_count }}<span class="fx-unit">项</span></div>
-                <div class="fx-sub">异常指标 · {{ !data.scorable_count ? '暂无可自动判读指标' : (data.abnormal_count ? '建议关注' : '已评分指标无异常') }}</div>
+                <div class="fx-num" :style="{ color: abnormalCountColor }">{{ currentAbnormal }}<span class="fx-unit">项</span></div>
+                <div class="fx-sub">{{ selectedSystem ? selectedSystem.label : '全部已测系统' }} · {{ currentSignalHint }}</div>
               </div>
               <div class="fx-signal">
                 <svg viewBox="0 0 240 64" preserveAspectRatio="none" class="sig-svg" aria-hidden="true">
@@ -82,20 +82,24 @@
                 </div>
               </div>
               <div class="fx-rows">
-                <div class="fx-row"><span>BMI 距上次</span>
-                  <b :style="{ color: bmiColor }">{{ bmiDeltaText }} <span class="faint">（数值越低越理想）</span></b>
+                <div class="fx-row" v-if="selectedSystem"><span>本系统检测情况</span>
+                  <b>{{ selectedSystem.measured }} 项已录入 · {{ selectedSystem.unrated }} 项未判读</b>
+                </div>
+                <div class="fx-row" v-else><span>BMI 距上次</span>
+                  <b :style="{ color: bmiColor }">{{ bmiDeltaText }} <span class="faint">（仅表示变化，不代表越低越好）</span></b>
                 </div>
               </div>
             </div>
 
             <div class="fx-card" :class="riskTone">
               <div class="fx-cap">RISK MONITOR <i>03</i></div>
-              <div class="fx-title">健康风险提示</div>
+              <div class="fx-title">{{ selectedSystem ? `${selectedSystem.label} · 检查提示` : '健康风险提示' }}</div>
               <div class="fx-row" style="margin-bottom:8px;">
-                <span>当前评估</span>
-                <b><em class="risk" :class="data.report ? data.report.risk_level : 'medium'">{{ riskText }}</em></b>
+                <span>{{ selectedSystem ? '本次相关检测' : '当前评估' }}</span>
+                <b v-if="selectedSystem"><em class="tag" :class="selectedSystem.status === 'unrated' ? 'none' : selectedSystem.status">{{ selectedSystemStatus }}</em></b>
+                <b v-else><em class="risk" :class="data.report ? data.report.risk_level : 'medium'">{{ riskText }}</em></b>
               </div>
-              <p class="fx-text">{{ data.report && data.report.summary ? data.report.summary : '本条记录还没有 AI 解读，点击右侧「生成 AI 解读」可补生成；免费额度限流时约 1 分钟后再试。' }}</p>
+              <p class="fx-text">{{ selectedSystem ? systemRiskMessage : (data.report && data.report.summary ? data.report.summary : '本条记录还没有 AI 解读，可补生成；模型暂不可用时仍能查看本地规则。') }}</p>
               <el-button v-if="!data.report" size="small" type="primary" style="margin-top:10px;"
                          :loading="genLoading" @click="genReport">生成 AI 解读</el-button>
             </div>
@@ -103,7 +107,7 @@
 
           <!-- 中：全息人体 -->
           <div class="hero-center">
-            <BodyMap2D solo :departments="mapDepartments" />
+            <BodyMap2D solo :departments="data.departments || []" :active-group="selectedSystemKey" @select="selectSystem" />
           </div>
 
           <!-- 右列 -->
@@ -122,42 +126,109 @@
               </div>
             </div>
 
-            <div class="fx-card">
+            <!-- 右中：人体系统 / 单器官相关指标列表，可进一步点击单项 -->
+            <div class="fx-card fx-interact-card">
               <div class="fx-cap">SYSTEM ANALYSIS <i>05</i></div>
-              <div class="fx-title">系统分析 · 关键指标<span class="fx-count">共 {{ metricTotal }} 项</span></div>
-              <div class="fx-list">
-                <div v-for="it in sysRows" :key="it.key" class="fx-li">
+              <div class="fx-card-head">
+                <div class="fx-title">{{ selectedSystem ? `${selectedSystem.label} · 相关指标` : '选择身体系统' }}
+                  <span class="fx-count">{{ selectedSystem ? `${selectedSystem.measured} 项已录入` : `${systemViews.filter(s => s.measured).length} 个系统有数据` }}</span>
+                </div>
+                <button v-if="selectedSystem" class="fx-text-button" type="button" @click="resetFocus">总览</button>
+              </div>
+              <p class="fx-interact-hint">{{ selectedSystem ? selectedSystem.hint : '点击人体光点或下方系统名称，逐层查看器官、检验指标与建议。' }}</p>
+              <div v-if="!selectedSystem" class="fx-system-grid">
+                <button v-for="sys in systemViews" :key="sys.key" class="fx-system-button" type="button"
+                        @click="selectSystem(sys)">
+                  <span class="d" :style="{ background: barColor(sys.status) }"></span>
+                  <span>{{ sys.label }}</span>
+                  <b>{{ sys.measured ? `${sys.measured} 项` : '未检测' }}</b>
+                </button>
+              </div>
+              <div v-else-if="!selectedSystem.measured" class="fx-empty-state">
+                <b>本次未检测 / 未录入</b>
+                <p>没有该系统的相关指标。灰色点位不代表器官健康或异常。</p>
+                <el-button size="small" text type="primary" @click="$router.push('/entry')">去录入体检</el-button>
+              </div>
+              <div v-else class="fx-list fx-metric-list">
+                <button v-for="it in currentSystemItems" :key="it.key" type="button" class="fx-li fx-li-button"
+                        :class="{ selected: selectedMetricKey === it.key }" :aria-pressed="selectedMetricKey === it.key"
+                        @click="selectMetric(it)">
                   <span class="d" :style="{ background: barColor(it.status) }"></span>
                   <span class="n">{{ it.name }}</span>
-                  <b :style="{ color: barColor(it.status) }">{{ it.value }}<i class="u">{{ it.unit }}</i></b>
-                </div>
+                  <span class="fx-li-reading"><b :style="{ color: barColor(it.status) }">{{ it.value }}<i class="u">{{ it.unit }}</i></b><small>{{ it.status_label || '未判读' }}</small></span>
+                </button>
               </div>
+              <p v-if="selectedSystem && selectedSystem.measured" class="fx-interact-foot">点击指标查看参考范围、历史记录与专项建议。</p>
             </div>
 
-            <div class="fx-card">
-              <div class="fx-cap">AI INSIGHT <i>06</i></div>
-              <div class="fx-title">智能健康解读</div>
-              <p class="fx-text">{{ data.report && data.report.summary ? data.report.summary : '还没有 AI 解读，可先看下方「异常诱因 · 关联疾病分析」（本地规则库即时生成）。' }}</p>
-              <ul v-if="aiPoints.length" class="fx-points">
-                <li v-for="(a, i) in aiPoints" :key="i">{{ a }}</li>
-              </ul>
-              <div class="fx-foot muted">AI ASSISTED ANALYSIS · 仅供参考</div>
+            <!-- 右下：全局 → 当前系统 → 当前指标，点击时联动；不重复调用大模型 -->
+            <div class="fx-card fx-interact-card fx-advice-card">
+              <div class="fx-cap">{{ selectedMetric ? 'METRIC INSIGHT' : selectedSystem ? 'SYSTEM INSIGHT' : 'AI INSIGHT' }} <i>06</i></div>
+              <div class="fx-card-head">
+                <div class="fx-title">{{ selectedMetric ? `${selectedMetric.name} · 专项解读` : selectedSystem ? `${selectedSystem.label} · 相关解读` : '智能健康解读' }}</div>
+                <button v-if="selectedMetric" class="fx-text-button" type="button" @click="selectedMetricKey = null">返回系统</button>
+              </div>
+              <template v-if="!selectedSystem">
+                <p class="fx-text fx-text-more">{{ data.report?.summary || '本次尚无 AI 总结。你可以点击人体部位查看确定性指标和本地规则。' }}</p>
+                <ul v-if="aiPoints.length" class="fx-points"><li v-for="(a, i) in aiPoints" :key="i">{{ a }}</li></ul>
+              </template>
+              <template v-else-if="!selectedSystem.measured">
+                <p class="fx-text fx-text-more">本次未录入 {{ selectedSystem.label }} 相关指标，无法判断该系统健康状况。你仍可点击其他灰色点位了解哪些项目尚未检测。</p>
+              </template>
+              <template v-else-if="selectedMetric">
+                <div class="fx-metric-reading">
+                  <b :style="{ color: barColor(selectedMetric.status) }">{{ selectedMetric.value }} <small>{{ selectedMetric.unit }}</small></b>
+                  <em class="tag" :class="selectedMetric.status === 'none' ? 'none' : selectedMetric.status">{{ selectedMetric.status_label || '未判读' }}</em>
+                </div>
+                <p class="fx-reference">{{ metricReference }}</p>
+                <p class="fx-text fx-text-more">{{ metricDetailSummary }}</p>
+                <p v-if="ruleLoading" class="fx-muted-small">专项规则加载中…</p>
+                <div v-if="metricHistory.length > 1" class="fx-history">
+                  <b>近期数值（相同指标）</b>
+                  <span v-for="h in metricHistory" :key="h.id">{{ h.time }}：{{ h.value }}</span>
+                </div>
+                <div v-if="metricCauses.length" class="fx-advice-section">
+                  <b>规则库可能相关因素（非病因诊断）</b>
+                  <ul class="fx-points"><li v-for="(cause, i) in metricCauses" :key="i">{{ cause }}</li></ul>
+                </div>
+                <div v-if="metricAdvice.length" class="fx-advice-section">
+                  <b>建议与复查方向</b>
+                  <ul class="fx-points"><li v-for="(a, i) in metricAdvice" :key="i">{{ a }}</li></ul>
+                </div>
+              </template>
+              <template v-else>
+                <p class="fx-text fx-text-more">{{ systemAnalysisSummary }}</p>
+                <div v-if="systemMatchedInsights.length" class="fx-advice-section">
+                  <b>本地规则提示</b>
+                  <ul class="fx-points"><li v-for="it in systemMatchedInsights.slice(0, 2)" :key="it.key">{{ it.name }}：{{ it.summary }}</li></ul>
+                </div>
+                <div v-if="systemSuggestions.length" class="fx-advice-section">
+                  <b>本地规则建议</b>
+                  <ul class="fx-points"><li v-for="(a, i) in systemSuggestions" :key="i">{{ a }}</li></ul>
+                </div>
+                <p v-else class="fx-muted-small">可点击上方某项指标，查看是否有专项规则和历史数值。</p>
+              </template>
+              <div class="fx-foot muted">规则及 AI 内容仅供健康科普，不代表器官疾病诊断</div>
             </div>
           </div>
 
-          <!-- 系统胶囊：点击跳到对应科室 -->
+          <!-- 系统快速导航：固定 8 个入口，未测灰色也可以点击。 -->
           <div class="sys-chips">
-            <button v-for="d in mergedDepartments" :key="d.name" class="sys-chip"
-                    :class="{ alert: d.abnormal }" @click="jumpDept(d.name)">
-              {{ shortDept(d.name) }}
-              <i v-if="d.abnormal">{{ d.abnormal }}</i>
+            <button v-for="sys in systemViews" :key="sys.key" class="sys-chip" type="button"
+                    :class="{ alert: sys.abnormal, active: selectedSystemKey === sys.key }"
+                    @click="selectSystem(sys)">
+              <i class="sys-dot" :style="{ background: barColor(sys.status) }"></i>{{ sys.label }}
+              <small>{{ sys.measured ? sys.measured : '—' }}</small>
+            </button>
+            <button v-if="unmappedItems.length" class="sys-chip" type="button" @click="jumpDept('其他指标')">
+              其他未绑定部位的指标 <small>{{ unmappedItems.length }}</small>
             </button>
           </div>
         </div>
         </div>
 
           <div style="margin-top:18px;">
-            <InsightPanel :record-id="data.record_id" />
+            <InsightPanel :record-id="data.record_id" :focus-keys="insightFocusKeys" />
           </div>
 
           <div class="grid-2" style="margin-top:18px;align-items:start;">
@@ -200,6 +271,7 @@ import { api } from '@/api'
 import BodyMap2D from '@/components/BodyMap2D.vue'
 import ChatBox from '@/components/ChatBox.vue'
 import InsightPanel from '@/components/InsightPanel.vue'
+import { buildSystemViews, systemForItem } from '@/utils/bodySystems'
 
 const loading = ref(true)
 const data = ref({ empty: true })
@@ -209,10 +281,6 @@ const RISK_TEXT = { low: '低风险', medium: '中风险', high: '高风险' }
 const riskText = computed(() => !data.value.scorable_count ? '缺少可判读指标' : (data.value.report ? (RISK_TEXT[data.value.report?.risk_level] || '需结合报告') : '尚未评估'))
 
 // KPI 卡顶部状态色条
-const abnormalTone = computed(() => {
-  const n = data.value.abnormal_count || 0
-  return n === 0 ? 'ok' : n <= 2 ? 'warn' : 'danger'
-})
 const riskTone = computed(() => {
   const r = data.value.report?.risk_level || 'medium'
   return r === 'low' ? 'ok' : r === 'medium' ? 'warn' : 'danger'
@@ -248,20 +316,157 @@ const mergedDepartments = computed(() => {
   })
 })
 
-// ---- hero 三栏布局用的派生数据 ----
-const allItems = computed(() => (data.value.departments || []).flatMap((d) => d.items))
-// 人体光点只接收已有锚点的规则库指标，自定义项目只在详细列表中显示。
-const mapDepartments = computed(() => (data.value.departments || [])
-  .map(d => ({ ...d, items: d.items.filter(it => it.anchor) }))
-  .filter(d => d.items.length))
+// ---- 点位/指标选择状态：null 为全局，系统点击后进一步点选指标。 ----
+const selectedSystemKey = ref(null)
+const selectedMetricKey = ref(null)
+const allItems = computed(() => (data.value.departments || []).flatMap(d => d.items || []))
+const systemViews = computed(() => buildSystemViews(data.value.departments || []))
+const selectedSystem = computed(() => systemViews.value.find(s => s.key === selectedSystemKey.value) || null)
+const currentSystemItems = computed(() => selectedSystem.value?.items || [])
+const selectedMetric = computed(() => currentSystemItems.value.find(i => i.key === selectedMetricKey.value) || null)
+const activeSignalItems = computed(() => selectedSystem.value ? currentSystemItems.value : allItems.value)
+const unmappedItems = computed(() => allItems.value.filter(i => !systemForItem(i)))
+const selectedSystemStatus = computed(() => {
+  const s = selectedSystem.value
+  if (!s) return ''
+  if (!s.measured) return '本次未检测'
+  if (s.status === 'unrated') return '仅有未判读数据'
+  if (s.abnormal) return `${s.abnormal} 项需关注`
+  return s.unrated ? '已判读部分正常；另有未判读' : '已判读项目未见异常'
+})
+const systemRiskMessage = computed(() => {
+  const s = selectedSystem.value
+  if (!s?.measured) return '未录入该系统检查项目。没有数据不代表正常，请按实际体检项目评估。'
+  if (s.status === 'unrated') return '本次有检测结果，但尚未纳入本地参考规则。请核对原始报告或咨询医生。'
+  if (s.abnormal) return `已录入 ${s.measured} 项相关指标，其中 ${s.abnormal} 项出现临界、偏高或偏低。请在右侧选择单项查看规则提示。`
+  return `已录入 ${s.measured} 项；已判读部分未见异常。该结果不能代表整个器官或系统完全健康。`
+})
+const currentAbnormal = computed(() => selectedSystem.value
+  ? selectedSystem.value.abnormal
+  : allItems.value.filter(i => i.known !== false && ['warning', 'danger', 'low'].includes(i.status)).length)
+const currentSignalHint = computed(() => {
+  const known = activeSignalItems.value.filter(i => i.known !== false && i.status !== 'none')
+  if (!known.length) return '无可判读指标'
+  return currentAbnormal.value ? '建议关注' : '已判读部分未见异常'
+})
+const insightFocusKeys = computed(() => !selectedSystem.value ? null
+  : selectedMetric.value ? [selectedMetric.value.key]
+    : selectedSystem.value.items.map(i => i.key))
+function selectSystem(system) {
+  const key = system?.key || system?.keys
+  if (!key) return
+  selectedSystemKey.value = key
+  selectedMetricKey.value = null
+}
+function resetFocus() {
+  selectedSystemKey.value = null
+  selectedMetricKey.value = null
+}
+function selectMetric(item) {
+  selectedMetricKey.value = selectedMetricKey.value === item.key ? null : item.key
+}
 
-// 系统分析卡：完全数据驱动——按「偏高 > 临界 > 偏低 > 正常」排序取前 6 条，
-// 后端新增任何指标都会自动参与排序并上榜，前端没有硬编码顺序。
-const SEV_RANK = { danger: 0, warning: 1, low: 2, normal: 3, none: 4 }
-const sysRows = computed(() => [...allItems.value]
-  .sort((a, b) => (SEV_RANK[a.status] ?? 4) - (SEV_RANK[b.status] ?? 4))
-  .slice(0, 6))
-const metricTotal = computed(() => allItems.value.length)
+// 直接复用后端一次性生成的报告 + 已存在的本地规则库，不在点击时调用大模型。
+const insights = ref({ items: [], cross: [] })
+const catalog = ref([])
+const historyRecords = ref([])
+const ruleRequests = new Map()
+const loadedRules = ref({})
+let ruleCacheEpoch = 0
+const activeRule = ref(null)
+const ruleLoading = ref(false)
+let ruleRequestVersion = 0
+function getLocalRule(key) {
+  if (Object.prototype.hasOwnProperty.call(loadedRules.value, key)) return Promise.resolve(loadedRules.value[key])
+  if (ruleRequests.has(key)) return ruleRequests.get(key)
+  const epoch = ruleCacheEpoch
+  const request = api.metricRule(key).then(result => {
+    const rule = result && result.title && Array.isArray(result.actions) ? result : null
+    if (epoch === ruleCacheEpoch) loadedRules.value = { ...loadedRules.value, [key]: rule }
+    return rule
+  }).catch(() => null).finally(() => {
+    if (ruleRequests.get(key) === request) ruleRequests.delete(key)
+  })
+  ruleRequests.set(key, request)
+  return request
+}
+const systemMatchedInsights = computed(() => {
+  const keys = new Set(currentSystemItems.value.map(i => i.key))
+  return (insights.value.items || []).filter(i => keys.has(i.key))
+})
+const systemAnalysisSummary = computed(() => {
+  const s = selectedSystem.value
+  if (!s?.measured) return '本次未录入相关检查结果，无法进行该系统的局部分析。'
+  if (s.status === 'unrated') return '本次仅有未判读指标，系统不进行自动正常/异常判断。'
+  if (systemMatchedInsights.value.length) return `本系统已发现 ${systemMatchedInsights.value.length} 项需关注指标。下列提示来自本地静态规则，供你理解检查结果，并非病因诊断。`
+  if (s.unrated) return '已判读的指标未见异常，但仍有未判读项目；建议结合原报告参考范围核对。'
+  return '本次已判读的相关指标未见异常。未检查到的项目以及器官结构、功能方面的问题，不能据此排除。'
+})
+const systemSuggestions = computed(() => {
+  // 只使用当前系统异常指标对应的本地专项规则，避免误把跨科室 AI 建议当作器官专属建议。
+  const out = []
+  for (const metric of systemMatchedInsights.value) {
+    const rule = loadedRules.value[metric.key]
+    if (!rule) continue
+    out.push(...(rule.checks || []).slice(0, 1), ...(rule.actions || []).slice(0, 1))
+  }
+  return [...new Set(out)].slice(0, 4)
+})
+const metricHistory = computed(() => {
+  const key = selectedMetricKey.value
+  if (!key || key.startsWith('custom_')) return []
+  return historyRecords.value.filter(r => Number.isFinite(r.metrics?.[key]))
+    .slice(-4).map(r => ({ id: r.id, time: (r.record_time || '').slice(0, 10), value: r.metrics[key] }))
+})
+const metricReference = computed(() => {
+  const it = selectedMetric.value
+  if (!it) return ''
+  if (it.reference) return `本次报告参考范围：${it.reference}`
+  if (it.known === false || it.status === 'none') return '未收录本地参考区间，请以原检验报告为准。'
+  if (['uric_acid', 'creatinine', 'hgb', 'ggt'].includes(it.key)) return '参考区间与性别等有关，具体以原检验报告为准。'
+  const m = catalog.value.find(m => m.key === it.key)
+  if (!m || m.high == null) return '请以原检验报告的参考区间为准。'
+  return `系统参考范围：${m.low == null ? '≤' + m.high : m.low + '～' + m.high}${m.unit ? ' ' + m.unit : ''}（请以检验机构为准）`
+})
+const metricDetailSummary = computed(() => {
+  const it = selectedMetric.value
+  if (!it) return ''
+  if (it.known === false || it.status === 'none') return '该项目尚未纳入本地规则库，仅显示原始检查值；不能自动判断是否正常。'
+  if (it.status === 'normal') return '本次数值在系统参考范围内。单项数值正常不代表相应器官或系统不存在其他问题。'
+  return activeRule.value?.summary || '已发现本地规则标注的异常状态，具体原因需结合症状、参考区间及医生判断。'
+})
+const metricCauses = computed(() => {
+  if (!selectedMetric.value || selectedMetric.value.status === 'normal') return []
+  return (activeRule.value?.causes || []).filter(c => c.hit).slice(0, 2).map(c => c.text)
+})
+const metricAdvice = computed(() => {
+  if (!selectedMetric.value || selectedMetric.value.status === 'normal') return []
+  const rule = activeRule.value
+  return [...(rule?.checks || []).slice(0, 2), ...(rule?.actions || []).slice(0, 2)]
+})
+// 系统切换时按需获取本系统异常指标的静态规则；请求无额外 AI token 开销。
+watch(selectedSystemKey, key => {
+  if (!key) return
+  for (const item of currentSystemItems.value) {
+    if (item.known !== false && ['warning', 'danger', 'low'].includes(item.status)) {
+      void getLocalRule(item.key)
+    }
+  }
+})
+watch(selectedMetricKey, async key => {
+  const version = ++ruleRequestVersion
+  activeRule.value = null
+  ruleLoading.value = false
+  const it = selectedMetric.value
+  if (!key || !it || it.known === false || !['warning', 'danger', 'low'].includes(it.status)) return
+  ruleLoading.value = true
+  try {
+    const rule = await getLocalRule(key)
+    if (version === ruleRequestVersion) activeRule.value = rule
+  } finally {
+    if (version === ruleRequestVersion) ruleLoading.value = false
+  }
+})
 
 // AI 解读卡补充要点（取报告里的科室建议，最多 3 条）
 const aiPoints = computed(() => {
@@ -295,7 +500,7 @@ function smoothPath(pts) {
 
 const signalPts = computed(() => {
   // 未判读的指标没有有效的标准化偏差，不得画进异常信号曲线。
-  const items = allItems.value.filter(it => it.known)
+  const items = activeSignalItems.value.filter(it => it.known !== false && it.status !== 'none')
   if (!items.length) return []
   const W = 240, H = 64, padX = 6, padY = 8
   const n = items.length
@@ -322,9 +527,8 @@ const signalPeak = computed(() => {
   if (!signalPts.value.length) return null
   return signalPts.value.reduce((a, b) => (b.sev > a.sev ? b : a))
 })
-const abnormalCountColor = computed(() => ((data.value.abnormal_count || 0) === 0 ? 'var(--ok)' : (data.value.abnormal_count || 0) <= 2 ? 'var(--warn)' : 'var(--danger)'))
+const abnormalCountColor = computed(() => (currentAbnormal.value === 0 ? 'var(--ok)' : currentAbnormal.value <= 2 ? 'var(--warn)' : 'var(--danger)'))
 
-const shortDept = (name) => name.replace(/(内科|科|检验)$/,'')
 const jumpDept = (name) => {
   if (!openDepts.value.includes(name)) openDepts.value = [...openDepts.value, name]
   document.getElementById('dept-sec')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -339,7 +543,27 @@ watch(mergedDepartments, (list) => {
 const load = async () => {
   loading.value = true
   try {
-    data.value = await api.overview()
+    const next = await api.overview()
+    if (data.value.record_id !== next.record_id) {
+      resetFocus()
+      // 单指标规则的 hit 由本次记录的数据决定，新记录不能沿用旧记录的缓存。
+      ++ruleCacheEpoch
+      ++ruleRequestVersion
+      loadedRules.value = {}
+      activeRule.value = null
+      ruleRequests.clear()
+    }
+    data.value = next
+    if (!next.empty) {
+      // 次要数据源失败不影响健康总览渲染。
+      const results = await Promise.allSettled([
+        api.insights(next.record_id), api.metricCatalog(), api.listRecords()
+      ])
+      if (results[0].status === 'fulfilled') insights.value = results[0].value
+      else insights.value = { items: [], cross: [] }
+      if (results[1].status === 'fulfilled') catalog.value = results[1].value.metrics || []
+      if (results[2].status === 'fulfilled') historyRecords.value = results[2].value || []
+    }
   } finally {
     loading.value = false
   }
@@ -596,4 +820,43 @@ onMounted(load)
   .hero-col { --fx-shift: 0px; }
   .hero-col .fx-card { width: 100% !important; }
 }
+
+/* ---- 交互式右侧卡：全局 / 系统 / 单指标三级视图 ---- */
+.fx-card-head { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.fx-text-button { flex: none; padding: 3px 7px; font: inherit; font-size: 10.5px; cursor: pointer; color: var(--brand); background: rgba(255,255,255,.8); border: 1px solid #d0e9ec; border-radius: 7px; }
+.fx-text-button:hover { background: var(--brand-soft); }
+.fx-interact-hint { font-size: 10.5px; line-height: 1.55; color: var(--sub); margin: 5px 0; }
+.fx-interact-foot { font-size: 10px; color: var(--faint); margin: 7px 0 0; }
+.fx-system-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 3px 8px; margin-top: 6px; max-height: 190px; overflow-y: auto; }
+.fx-system-button { display: flex; gap: 5px; align-items: center; padding: 5px 3px; border: 0; border-bottom: 1px solid var(--line-soft); cursor: pointer; background: transparent; font: inherit; font-size: 10px; color: var(--text); text-align: left; }
+.fx-system-button:hover { color: var(--brand); background: rgba(239,248,251,.7); }
+.fx-system-button .d { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.fx-system-button span:nth-child(2) { flex: 1; }
+.fx-system-button b { font-size: 10px; color: var(--faint); white-space: nowrap; }
+.fx-metric-list { max-height: 210px; overflow-y: auto; overscroll-behavior: contain; }
+.fx-li-button { width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line-soft); font: inherit; background: transparent; cursor: pointer; border-radius: 5px; }
+.fx-li-button:hover, .fx-li-button.selected { background: rgba(223,242,248,.8); }
+.fx-li-button.selected { outline: 1px solid rgba(14,116,144,.3); }
+.fx-li-button .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx-li-reading { display: flex; flex-direction: column; align-items: flex-end; flex: none; gap: 0; }
+.fx-li-reading small { font-size: 9.5px; color: var(--sub); }
+.fx-empty-state { padding: 12px 3px; line-height: 1.6; color: var(--sub); font-size: 11px; }
+.fx-empty-state b { display: block; color: var(--text); }
+.fx-empty-state p { margin: 4px 0; }
+.fx-advice-card { max-height: 340px; overflow-y: auto; overscroll-behavior: contain; }
+.fx-text.fx-text-more { display: block; overflow: visible; font-size: 11.5px; }
+.fx-metric-reading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
+.fx-metric-reading > b { font-size: 19px; }
+.fx-metric-reading small { font-size: 10px; font-weight: 500; }
+.fx-reference, .fx-muted-small { font-size: 10.5px; line-height: 1.55; color: var(--sub); margin: 6px 0; }
+.fx-history { display: grid; gap: 3px; margin-top: 8px; padding: 7px 9px; background: rgba(245,249,252,.9); border-radius: 8px; font-size: 10.5px; color: var(--text); }
+.fx-history b, .fx-advice-section > b { font-size: 11px; color: var(--ink); }
+.fx-advice-section { margin-top: 9px; }
+.fx-advice-section .fx-points { margin-top: 4px; }
+.sys-chip.active { outline: 2px solid rgba(14,116,144,.5); background: var(--brand-soft); }
+.sys-chip .sys-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+.sys-chip small { color: var(--sub); font-size: 10px; }
+.fx-card .tag.none { background: #f1f5f9; color: #64748b; }
+@media (max-width: 1100px) { .fx-advice-card { max-height: none; } }
+
 </style>

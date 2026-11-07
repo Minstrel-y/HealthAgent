@@ -6,19 +6,19 @@
   <div class="insight-wrap">
     <div class="insight-head">
       <div>
-        <div class="card-title" style="margin-bottom:4px;">异常诱因 · 关联疾病分析</div>
-        <span class="muted">基于本地规则库推理，不调用模型；标 ★ 的诱因与你本次的数据吻合</span>
+        <div class="card-title" style="margin-bottom:4px;">{{ focusKeys === null ? '异常诱因 · 关联疾病分析' : '当前选择 · 相关规则分析' }}</div>
+        <span class="muted">本地规则库推理，不调用 AI。{{ focusKeys === null ? '展示整份报告的异常指标' : '仅展示当前选中范围内有规则的异常指标' }}；标 ★ 的诱因有本次数据支持</span>
       </div>
       <el-button size="small" text @click="visible = !visible">
-        {{ visible ? '收起' : '展开' }}（{{ items.length }} 项）
+        {{ visible ? '收起' : '展开' }}（{{ displayItems.length }} 项）
       </el-button>
     </div>
 
     <div v-show="visible">
       <!-- 交叉组合结论 -->
-      <div v-if="cross.length" class="cross-block">
+      <div v-if="displayCross.length" class="cross-block">
         <div class="block-label">多项指标组合提示</div>
-        <div v-for="c in cross" :key="c.title" class="cross-card" :class="levelClass(c.level)">
+        <div v-for="c in displayCross" :key="c.title" class="cross-card" :class="levelClass(c.level)">
           <div class="cross-top">
             <span class="chip">{{ c.level }}</span>
             <b>{{ c.title }}</b>
@@ -29,8 +29,8 @@
       </div>
 
       <!-- 单指标诱因 -->
-      <div v-if="items.length" class="insight-grid">
-        <div v-for="it in items" :key="it.key" class="insight-card">
+      <div v-if="displayItems.length" class="insight-grid">
+        <div v-for="it in displayItems" :key="it.key" class="insight-card">
           <div class="ic-head">
             <div class="ic-title">
               <b>{{ it.name }}</b>
@@ -65,7 +65,7 @@
         </div>
       </div>
 
-      <div v-else class="empty-tip">本次所有指标都在正常范围，没有需要分析的异常项 🎉</div>
+      <div v-else-if="!displayCross.length" class="empty-tip">{{ focusKeys === null ? '目前没有可供本地规则库推断的异常项（也可能是未录入或未判读）。' : '所选范围暂无可匹配的异常规则；未检测、未判读或正常都可能出现此提示。' }}</div>
 
       <p class="faint" style="margin-top:12px;">{{ disclaimer }}</p>
     </div>
@@ -108,11 +108,13 @@
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '@/api'
 
 const props = defineProps({
-  recordId: { type: [Number, String], default: null }
+  recordId: { type: [Number, String], default: null },
+  // null = 展示全局；[] = 当前系统无关联指标，不能回退展示全局。
+  focusKeys: { type: Array, default: null }
 })
 
 const items = ref([])
@@ -121,6 +123,12 @@ const disclaimer = ref('')
 const visible = ref(true)
 const drawer = ref(false)
 const rule = ref(null)
+const filterSet = computed(() => props.focusKeys === null ? null : new Set(props.focusKeys))
+const displayItems = computed(() => filterSet.value === null
+  ? items.value : items.value.filter(it => filterSet.value.has(it.key)))
+// 联合结论可能还涉及其他器官指标；标题仍明确展示全部参与键，避免误解。
+const displayCross = computed(() => filterSet.value === null
+  ? cross.value : cross.value.filter(c => (c.keys || []).some(k => filterSet.value.has(k))))
 
 const load = async () => {
   try {
