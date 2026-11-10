@@ -47,8 +47,6 @@
         <router-view />
       </main>
     </div>
-
-    <LingbaoAI v-if="showLingbao" />
   </div>
 </template>
 
@@ -56,12 +54,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { auth } from '@/api'
-import LingbaoAI from '@/components/LingbaoAI.vue'
 
 const route = useRoute()
 const router = useRouter()
-// 灵宝只在已登录的主功能页显示，登录页与微信演示页不显示
-const showLingbao = computed(() => !['/login', '/wechat-mock'].includes(route.path))
 const username = localStorage.getItem('ha_user') || ''
 const profile = ref({ avatar: '', nickname: '', font_scale: 1 })
 
