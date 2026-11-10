@@ -48,15 +48,18 @@
       </main>
     </div>
   </div>
+  <LingbaoAI v-if="showLingbao" />
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { auth } from '@/api'
+import LingbaoAI from '@/components/LingbaoAI.vue'
 
 const route = useRoute()
 const router = useRouter()
+const showLingbao = computed(() => !['/login', '/wechat-mock'].includes(route.path))
 const username = localStorage.getItem('ha_user') || ''
 const profile = ref({ avatar: '', nickname: '', font_scale: 1 })
 
