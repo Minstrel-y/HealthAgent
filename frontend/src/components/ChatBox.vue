@@ -79,11 +79,12 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { api } from '@/api'
+import { useChatSession } from '@/composables/useChatSession'
 
 const props = defineProps({
   recordId: { type: [Number, String], default: null },
@@ -95,43 +96,13 @@ const props = defineProps({
   }
 })
 
-// 会话持久化：按用户名存 localStorage，刷新后恢复聊天记录
-const storageKey = () => `ha_chat_${localStorage.getItem('ha_user') || 'guest'}`
+// 共享会话：所有 ChatBox 实例（灵宝面板 / AI 问答页 / 报告概览页）共用同一份消息，实时同步
+const { messages, persist } = useChatSession()
 
-const loadMessages = () => {
-  try {
-    const arr = JSON.parse(localStorage.getItem(storageKey()) || '[]')
-    if (!Array.isArray(arr)) return []
-    return arr
-      .filter((m) => m && (m.role === 'user' || m.role === 'ai') && typeof m.content === 'string')
-      .map((m) => ({ role: m.role, content: m.content }))
-  } catch {
-    return []
-  }
-}
-
-const persistNow = () => {
-  try {
-    const payload = messages.value.map((m) => ({ role: m.role, content: m.full || m.content }))
-    localStorage.setItem(storageKey(), JSON.stringify(payload))
-  } catch { /* 隐私模式/配额满等异常时静默忽略 */ }
-}
-
-const messages = ref(loadMessages())
 const input = ref('')
 const busy = ref(false)
 const boxRef = ref(null)
 let timer = null
-let saveTimer = null
-
-// 内容变化后（防抖）落盘：打字机逐字更新时用 m.full 保存完整内容，避免刷新后只剩半句
-watch(messages, () => {
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(persistNow, 300)
-}, { deep: true })
-
-const onPageHide = () => { clearTimeout(saveTimer); persistNow() }
-window.addEventListener('pagehide', onPageHide)
 
 // 恢复历史后直接滚到最新一条
 onMounted(() => {
@@ -222,9 +193,7 @@ const clearAll = () => {
 
 onBeforeUnmount(() => {
   clearInterval(timer)
-  clearTimeout(saveTimer)
-  window.removeEventListener('pagehide', onPageHide)
-  persistNow()
+  persist()
 })
 
 defineExpose({ send })
