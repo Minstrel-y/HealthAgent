@@ -12,6 +12,7 @@ from routers.analysis_router import router as analysis_router
 from routers.auth_router import router as auth_router
 from routers.insight_router import router as insight_router
 from routers.records_router import router as records_router
+from routers.staff_router import staff, admin, patient
 
 db.init_db()
 
@@ -29,6 +30,9 @@ app.include_router(auth_router)
 app.include_router(records_router)
 app.include_router(analysis_router)
 app.include_router(insight_router)
+app.include_router(staff)
+app.include_router(admin)
+app.include_router(patient)
 
 
 @app.get("/api/health")

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 import db
 import llm
 from auth import current_user
+from rbac import Actor, require_roles
 from parser import build_history_text, parse_health_text
 from refs import METRICS, CHECK_TYPES, TSH_SYSTEM_RANGES, build_departments, count_abnormal, health_score, score_label, scorable_count
 from schemas import RecordIn, RecordUpdateIn
@@ -161,7 +162,8 @@ async def parse_file(file: UploadFile = File(...), username: str = Depends(curre
 
 # ---------------- 记录 ----------------
 @router.post("/records")
-def create_record(body: RecordIn, username: str = Depends(current_user)):
+def create_record(body: RecordIn, username: str = Depends(current_user),
+                  actor: Actor = Depends(require_roles("user", "admin"))):
     """保存一条体检记录并生成 AI 报告。报告生成失败也保留记录，方便事后补。"""
     metrics = clean_metrics((body.metrics or {}).model_dump() if body.metrics else {})
     has_metric = any(k in metrics for k in METRIC_KEYS)
@@ -213,7 +215,8 @@ def get_record(record_id: int, username: str = Depends(current_user)):
 
 
 @router.post("/records/{record_id}/report")
-def gen_report(record_id: int, username: str = Depends(current_user)):
+def gen_report(record_id: int, username: str = Depends(current_user),
+               actor: Actor = Depends(require_roles("user", "admin"))):
     """给某条记录补生成 AI 解读。"""
     r = db.get_record(username, record_id)
     if not r:
@@ -227,7 +230,8 @@ def gen_report(record_id: int, username: str = Depends(current_user)):
 
 
 @router.put("/records/{record_id}")
-def update_record(record_id: int, body: RecordUpdateIn, username: str = Depends(current_user)):
+def update_record(record_id: int, body: RecordUpdateIn, username: str = Depends(current_user),
+                  actor: Actor = Depends(require_roles("user", "admin"))):
     """修改记录指标并重新生成 AI 解读。指标会被清理后整体覆盖。"""
     r = db.get_record(username, record_id)
     if not r:
@@ -258,7 +262,8 @@ def update_record(record_id: int, body: RecordUpdateIn, username: str = Depends(
 
 
 @router.delete("/records/{record_id}")
-def delete_record(record_id: int, username: str = Depends(current_user)):
+def delete_record(record_id: int, username: str = Depends(current_user),
+                  actor: Actor = Depends(require_roles("user", "admin"))):
     """删除一条体检记录。"""
     if not db.delete_record(username, record_id):
         raise HTTPException(404, "记录不存在")

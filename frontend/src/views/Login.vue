@@ -5,35 +5,9 @@
       <div class="login-sub">健康干预 AI 智能体 · 登录</div>
 
       <el-tabs v-model="tab" stretch @tab-change="onTabChange">
-        <!-- 账号密码 -->
-        <el-tab-pane label="账号登录" name="login">
-          <el-form @submit.prevent>
-            <el-form-item>
-              <el-input v-model="form.username" placeholder="请输入用户名" size="large" />
-            </el-form-item>
-            <el-form-item>
-              <el-input v-model="form.password" type="password" placeholder="请输入密码" size="large"
-                        show-password @keyup.enter="submit" />
-            </el-form-item>
-            <el-button type="primary" size="large" style="width:100%" :loading="loading" @click="submit">
-              登 录
-            </el-button>
-          </el-form>
-        </el-tab-pane>
-
-        <el-tab-pane label="注册" name="register">
-          <el-form @submit.prevent>
-            <el-form-item>
-              <el-input v-model="form.username" placeholder="设置用户名" size="large" />
-            </el-form-item>
-            <el-form-item>
-              <el-input v-model="form.password" type="password" placeholder="密码至少 6 位" size="large"
-                        show-password @keyup.enter="submit" />
-            </el-form-item>
-            <el-button size="large" style="width:100%" :loading="loading" @click="submit">
-              注册并登录
-            </el-button>
-          </el-form>
+        <!-- 账号密码：角色选择、登录与注册统一交给 RoleLoginPanel -->
+        <el-tab-pane label="账号登录" name="account">
+          <RoleLoginPanel />
         </el-tab-pane>
 
         <!-- 微信扫码 -->
@@ -82,16 +56,16 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, reactive, ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { resetRoleCache } from '@/router'
 import QRCode from 'qrcode'
 import { auth } from '@/api'
 import { ElMessage } from 'element-plus'
+import RoleLoginPanel from '@/components/RoleLoginPanel.vue'
 
 const router = useRouter()
-const tab = ref('login')
-const loading = ref(false)
-const form = reactive({ username: '', password: '' })
+const tab = ref('account')
 
 // ---- 二维码状态 ----
 const qrImg = ref('')
@@ -100,27 +74,6 @@ const qrState = ref('pending')
 const qrTicket = ref('')
 const confirming = ref(false)
 let timer = null
-
-const afterLogin = (res) => {
-  localStorage.setItem('ha_token', res.access_token)
-  localStorage.setItem('ha_user', res.username)
-  router.replace('/overview')
-}
-
-const submit = async () => {
-  if (!form.username.trim() || form.password.length < 6) {
-    ElMessage.warning('用户名不能为空，密码至少 6 位')
-    return
-  }
-  loading.value = true
-  try {
-    const fn = tab.value === 'login' ? auth.login : auth.register
-    const res = await fn(form.username.trim(), form.password)
-    afterLogin(res)
-  } finally {
-    loading.value = false
-  }
-}
 
 // ------------------------------------------------------------ 微信扫码
 const stopPoll = () => {
@@ -176,6 +129,8 @@ const startPoll = () => {
         ElMessage.success('登录成功')
         localStorage.setItem('ha_token', s.access_token)
         localStorage.setItem('ha_user', s.username)
+        localStorage.setItem('ha_role', 'user')
+        resetRoleCache()
         router.replace('/overview')
       } else if (s.status === 'expired') {
         stopPoll()

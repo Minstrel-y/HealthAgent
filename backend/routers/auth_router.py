@@ -13,6 +13,7 @@ from config import (
     WECHAT_SECRET,
 )
 from schemas import LoginIn, ProfileIn, RegisterIn, TokenOut, WechatConfirmIn
+from rbac import validate_registration_role, verify_login_role
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -25,9 +26,10 @@ def register(body: RegisterIn):
     username = (body.username or "").strip()
     if not username or len(body.password or "") < 6:
         raise HTTPException(400, "用户名不能为空，密码至少 6 位")
-    if not db.create_user(username, body.password):
+    role = validate_registration_role(body.role)
+    if not db.create_user(username, body.password, role=role):
         raise HTTPException(400, "用户名已存在")
-    return TokenOut(access_token=create_token(username), username=username)
+    return TokenOut(access_token=create_token(username), username=username, role=role)
 
 
 @router.post("/login", response_model=TokenOut)
@@ -35,7 +37,8 @@ def login(body: LoginIn):
     username = (body.username or "").strip()
     if not db.verify_user(username, body.password):
         raise HTTPException(401, "账号或密码错误")
-    return TokenOut(access_token=create_token(username), username=username)
+    verified_role = verify_login_role(username, body.role)
+    return TokenOut(access_token=create_token(username), username=username, role=verified_role)
 
 
 @router.get("/me")
@@ -122,6 +125,7 @@ def wechat_poll(ticket: str):
         "access_token": create_token(s["username"]),
         "token_type": "bearer",
         "username": s["username"],
+        "role": db.get_profile(s["username"])["role"],
     }
 
 
@@ -143,7 +147,7 @@ def wechat_confirm(body: WechatConfirmIn):
     if not username:
         raise HTTPException(500, "登录失败，请重试")
     db.confirm_wechat_session(body.ticket, username, body.openid or "")
-    return TokenOut(access_token=create_token(username), username=username)
+    return TokenOut(access_token=create_token(username), username=username, role="user")
 
 
 @router.get("/wechat/callback")
