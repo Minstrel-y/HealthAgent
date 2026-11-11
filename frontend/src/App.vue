@@ -64,8 +64,9 @@ import LingbaoAI from '@/components/LingbaoAI.vue'
 
 const route = useRoute()
 const router = useRouter()
-// 灵宝只在已登录的主功能页显示，登录页与微信演示页不显示
-const showLingbao = computed(() => role.value === 'user' && !publicPage.value)
+// 灵宝对 user/doctor/admin 三类角色都显示，仅在登录页与微信演示页隐藏；
+// 聊天内容按账号隔离（useChatSession 以 ha_user 为 key 落 localStorage），互不串台。
+const showLingbao = computed(() => !publicPage.value)
 const publicPage = computed(() => ['/login', '/wechat-mock'].includes(route.path))
 const profile = ref({ avatar: '', nickname: '', font_scale: 1, role: 'user' })
 const username = computed(() => profile.value.username || localStorage.getItem('ha_user') || '')
