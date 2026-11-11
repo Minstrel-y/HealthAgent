@@ -16,6 +16,7 @@ http.interceptors.response.use(
     if (err?.response?.status === 401) {
       localStorage.removeItem('ha_token')
       localStorage.removeItem('ha_user')
+      localStorage.removeItem('ha_role')
       // 路由是 path 模式（createWebHistory），整页跳到 /login；
       // 已在 /login 时不再跳，避免反复整页刷新
       if (location.pathname !== '/login') location.href = '/login'
@@ -26,8 +27,8 @@ http.interceptors.response.use(
 )
 
 export const auth = {
-  register: (username, password) => http.post('/auth/register', { username, password }),
-  login: (username, password) => http.post('/auth/login', { username, password }),
+  register: (username, password, role = 'user') => http.post('/auth/register', { username, password, role }),
+  login: (username, password, role = 'user') => http.post('/auth/login', { username, password, role }),
   profile: () => http.get('/auth/profile'),
   updateProfile: (patch) => http.put('/auth/profile', patch),
   uploadAvatar: (file) => {
@@ -66,3 +67,21 @@ export const api = {
 }
 
 export default http
+
+// 医生、管理员共用的受保护工作台接口
+export const staffApi = {
+  patients: (q = '') => http.get('/staff/patients', { params: { q } }),
+  records: (username) => http.get(`/staff/patients/${encodeURIComponent(username)}/records`),
+  record: (id) => http.get(`/staff/records/${id}`),
+  insights: (id) => http.get(`/staff/records/${id}/insights`),
+  diagnoses: (id) => http.get(`/staff/records/${id}/diagnoses`),
+  diagnose: (id, data) => http.post(`/staff/records/${id}/diagnoses`, data),
+  myDiagnoses: () => http.get('/diagnoses/mine'),
+  adminAuditLogs: (limit = 100) => http.get('/admin/audit-logs', { params: { limit } }),
+  adminUsers: (q = '') => http.get('/admin/users', { params: { q } }),
+  adminChangeRole: (username, role) => http.put(`/admin/users/${encodeURIComponent(username)}/role`, { role }),
+  adminCreateRecord: (username, data) => http.post(`/admin/patients/${encodeURIComponent(username)}/records`, data),
+  adminUpdateRecord: (id, data) => http.put(`/admin/records/${id}`, data),
+  adminDeleteRecord: (id) => http.delete(`/admin/records/${id}`),
+  adminRegenerateReport: (id) => http.post(`/admin/records/${id}/report`)
+}

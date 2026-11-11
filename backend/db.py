@@ -13,6 +13,7 @@ def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
@@ -52,6 +53,31 @@ def init_db():
     _add_column_if_missing(conn, "users", "birthday", "TEXT")
     _add_column_if_missing(conn, "users", "font_scale", "REAL")
     _add_column_if_missing(conn, "users", "wechat_openid", "TEXT")
+    # RBAC：旧账号默认普通用户；不会清空任何现有数据
+    _add_column_if_missing(conn, "users", "role", "TEXT NOT NULL DEFAULT 'user'")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS diagnoses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_id INTEGER NOT NULL REFERENCES records(id) ON DELETE CASCADE,
+            doctor_username TEXT NOT NULL,
+            title TEXT NOT NULL,
+            impression TEXT NOT NULL,
+            advice TEXT NOT NULL,
+            follow_up TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_diagnoses_record ON diagnoses(record_id, created_at)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor_username TEXT NOT NULL,
+            action TEXT NOT NULL,
+            target_username TEXT,
+            record_id INTEGER,
+            created_at TEXT NOT NULL
+        )
+    """)
 
     # ---- 微信扫码会话：二维码 -> 轮询 -> 登录 ----
     conn.execute("""
@@ -80,6 +106,7 @@ def get_profile(username: str) -> dict:
     row = get_user_row(username)
     return {
         "username": username,
+        "role": (row["role"] if row and row["role"] else "user"),
         "nickname": (row["nickname"] if row and row["nickname"] else username),
         "avatar": (row["avatar"] if row and row["avatar"] else ""),
         "sex": (row["sex"] if row and row["sex"] else "unknown"),
@@ -126,17 +153,17 @@ def hash_password(password: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), ITERATIONS).hex()
 
 
-def create_user(username: str, password: str, openid: str = "") -> bool:
+def create_user(username: str, password: str, openid: str = "", role: str = "user") -> bool:
     username = (username or "").strip()
-    if not username or not password:
+    if not username or not password or role not in ("user", "doctor", "admin"):
         return False
     salt = secrets.token_hex(16)
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO users (username, pwd_hash, salt, created_at, wechat_openid) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO users (username, pwd_hash, salt, created_at, wechat_openid, role) VALUES (?, ?, ?, ?, ?, ?)",
             (username, hash_password(password, salt), salt,
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S"), openid or None),
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S"), openid or None, role),
         )
         conn.commit()
         return True
@@ -318,3 +345,163 @@ def get_record(username: str, record_id: int):
     finally:
         conn.close()
     return _row_to_dict(r) if r else None
+
+
+# ------------------------------------------------------------------ RBAC / 医生工作台
+
+def list_staff_patients(role: str = "doctor", q: str = "", limit: int = 100) -> list:
+    """医生只查看患者角色；管理员可查看所有账号（含医护人员）。"""
+    limit = max(1, min(int(limit), 100))
+    conn = get_conn()
+    try:
+        sql = "SELECT username, nickname, role, sex, created_at FROM users WHERE 1=1"
+        args = []
+        if role != "admin":
+            sql += " AND role = 'user'"
+        if q:
+            sql += " AND (username LIKE ? OR nickname LIKE ?)"
+            args.extend([f"%{q}%", f"%{q}%"])
+        sql += " ORDER BY created_at DESC, id DESC LIMIT ?"
+        args.append(limit)
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+    finally:
+        conn.close()
+
+
+def get_record_global(record_id: int):
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT username, id, record_time, raw_text, parsed_json, report_json "
+            "FROM records WHERE id = ?", (record_id,)
+        ).fetchone()
+        return ({"username": row["username"], **_row_to_dict(row)}) if row else None
+    finally:
+        conn.close()
+
+
+def list_diagnoses_for_record(record_id: int) -> list:
+    conn = get_conn()
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT id, record_id, doctor_username, title, impression, advice, follow_up, created_at "
+            "FROM diagnoses WHERE record_id=? ORDER BY id DESC", (record_id,)
+        ).fetchall()]
+    finally:
+        conn.close()
+
+
+def add_diagnosis(record_id: int, doctor_username: str, data: dict) -> int:
+    conn = get_conn()
+    try:
+        if not conn.execute("SELECT 1 FROM records WHERE id=?", (record_id,)).fetchone():
+            raise ValueError("记录不存在")
+        cur = conn.execute("""
+            INSERT INTO diagnoses(record_id, doctor_username, title, impression, advice, follow_up, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (record_id, doctor_username, data["title"], data["impression"],
+              data["advice"], data.get("follow_up", ""), datetime.now().isoformat(timespec="seconds")))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def list_my_diagnoses(username: str) -> list:
+    conn = get_conn()
+    try:
+        return [dict(r) for r in conn.execute("""
+            SELECT d.id, d.record_id, d.doctor_username, d.title, d.impression,
+                   d.advice, d.follow_up, d.created_at, r.record_time
+            FROM diagnoses d JOIN records r ON r.id = d.record_id
+            WHERE r.username=? ORDER BY d.id DESC
+        """, (username,)).fetchall()]
+    finally:
+        conn.close()
+
+
+def audit_events(actor: str, action: str, target_username: str | None = None, record_id: int | None = None):
+    conn = get_conn()
+    try:
+        conn.execute("""
+            INSERT INTO audit_logs(actor_username, action, target_username, record_id, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (actor, action, target_username, record_id, datetime.now().isoformat(timespec="seconds")))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def admin_update_record(actor: str, record_id: int, raw_text: str, parsed: dict) -> bool:
+    """单个事务保存修改与审计，不能绕过授权直接对外暴露。"""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT username FROM records WHERE id=?", (record_id,)).fetchone()
+        if not row:
+            return False
+        conn.execute("""
+            UPDATE records SET raw_text=?, parsed_json=?, report_json=NULL WHERE id=?
+        """, (raw_text, json.dumps(parsed, ensure_ascii=False), record_id))
+        conn.execute("""
+            INSERT INTO audit_logs(actor_username, action, target_username, record_id, created_at)
+            VALUES (?, 'admin.update_record', ?, ?, ?)
+        """, (actor, row["username"], record_id, datetime.now().isoformat(timespec="seconds")))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def admin_delete_record(actor: str, record_id: int) -> bool:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT username FROM records WHERE id=?", (record_id,)).fetchone()
+        if not row:
+            return False
+        conn.execute("DELETE FROM records WHERE id=?", (record_id,))
+        conn.execute("""
+            INSERT INTO audit_logs(actor_username, action, target_username, record_id, created_at)
+            VALUES (?, 'admin.delete_record', ?, ?, ?)
+        """, (actor, row["username"], record_id, datetime.now().isoformat(timespec="seconds")))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def admin_create_record(actor: str, username: str, raw_text: str, parsed: dict) -> int:
+    conn = get_conn()
+    try:
+        if not conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+            raise ValueError("用户不存在")
+        cur = conn.execute("""
+            INSERT INTO records(username, raw_text, parsed_json, record_time)
+            VALUES (?, ?, ?, ?)
+        """, (username, raw_text, json.dumps(parsed, ensure_ascii=False),
+              datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        rid = cur.lastrowid
+        conn.execute("""
+            INSERT INTO audit_logs(actor_username, action, target_username, record_id, created_at)
+            VALUES (?, 'admin.create_record', ?, ?, ?)
+        """, (actor, username, rid, datetime.now().isoformat(timespec="seconds")))
+        conn.commit()
+        return rid
+    finally:
+        conn.close()
+
+
+def admin_set_role(actor: str, username: str, role: str) -> bool:
+    if role not in ("user", "doctor", "admin") or actor == username:
+        return False
+    conn = get_conn()
+    try:
+        cur = conn.execute("UPDATE users SET role=? WHERE username=?", (role, username))
+        if cur.rowcount:
+            conn.execute("""
+                INSERT INTO audit_logs(actor_username, action, target_username, created_at)
+                VALUES (?, 'admin.change_role', ?, ?)
+            """, (actor, username, datetime.now().isoformat(timespec="seconds")))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()

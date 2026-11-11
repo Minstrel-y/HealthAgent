@@ -1,5 +1,8 @@
 <template>
   <div class="app-shell">
+    <router-view v-if="publicPage" />
+    <template v-else>
+
     <header class="app-header">
       <div class="brand">
         <span class="brand-mark">🩺</span>
@@ -49,26 +52,28 @@
     </div>
 
     <LingbaoAI v-if="showLingbao" />
+    </template>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { auth } from '@/api'
 import LingbaoAI from '@/components/LingbaoAI.vue'
 
 const route = useRoute()
 const router = useRouter()
-// 灵宝只在已登录的主功能页显示，登录页与微信演示页不显示
-const showLingbao = computed(() => !['/login', '/wechat-mock'].includes(route.path))
-const username = localStorage.getItem('ha_user') || ''
-const profile = ref({ avatar: '', nickname: '', font_scale: 1 })
-
-const initial = computed(() => (profile.value.nickname || username || 'U').slice(0, 1).toUpperCase())
-const displayName = computed(() => profile.value.nickname || username)
-
-const menus = [
+// 灵宝对 user/doctor/admin 三类角色都显示，仅在登录页与微信演示页隐藏；
+// 聊天内容按账号隔离（useChatSession 以 ha_user 为 key 落 localStorage），互不串台。
+const showLingbao = computed(() => !publicPage.value)
+const publicPage = computed(() => ['/login', '/wechat-mock'].includes(route.path))
+const profile = ref({ avatar: '', nickname: '', font_scale: 1, role: 'user' })
+const username = computed(() => profile.value.username || localStorage.getItem('ha_user') || '')
+const initial = computed(() => (profile.value.nickname || username.value || 'U').slice(0, 1).toUpperCase())
+const displayName = computed(() => profile.value.nickname || username.value)
+const role = computed(() => profile.value.role || 'user')
+const userMenus = [
   { path: '/overview', title: '报告总览', icon: '◲' },
   { path: '/entry', title: '录入体检', icon: '✎' },
   { path: '/trend', title: '指标趋势', icon: '◹' },
@@ -76,6 +81,19 @@ const menus = [
   { path: '/chat', title: 'AI 问答', icon: '◍' },
   { path: '/settings', title: '个人设置', icon: '⚙' }
 ]
+const doctorMenus = [
+  { path: '/doctor/dashboard', title: '医生工作台', icon: '🩺' },
+  { path: '/doctor/reports', title: '体检报告', icon: '▤' },
+  { path: '/doctor/trends', title: '健康趋势', icon: '◹' },
+  { path: '/settings', title: '个人设置', icon: '⚙' }
+]
+const adminMenus = [
+  { path: '/admin/dashboard', title: '数据维护', icon: '◲' },
+  { path: '/admin/users', title: '用户管理', icon: '♙' },
+  { path: '/admin/audit', title: '操作日志', icon: '◷' },
+  { path: '/settings', title: '个人设置', icon: '⚙' }
+]
+const menus = computed(() => role.value === 'doctor' ? doctorMenus : role.value === 'admin' ? adminMenus : userMenus)
 
 // 字号偏好：本地缓存先生效（避免刷新时闪一下），再向服务端取最新
 const applyFont = (scale) => {
@@ -92,6 +110,8 @@ const loadProfile = async () => {
     profile.value = p
     applyFont(p.font_scale)
     localStorage.setItem('ha_font_scale', String(p.font_scale || 1))
+    localStorage.setItem('ha_role', p.role || 'user')
+    localStorage.setItem('ha_user', p.username || '')
   } catch {
     /* 未登录或接口异常时保持默认字号 */
   }
@@ -108,10 +128,12 @@ const logout = () => {
   localStorage.removeItem('ha_token')
   localStorage.removeItem('ha_user')
   localStorage.removeItem('ha_font_scale')
+  localStorage.removeItem('ha_role')
   router.replace('/login')
 }
 
 onMounted(loadProfile)
+watch(() => route.path, (path) => { if (!['/login', '/wechat-mock'].includes(path)) loadProfile() })
 </script>
 
 <style scoped>

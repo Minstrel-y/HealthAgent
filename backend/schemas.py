@@ -1,21 +1,24 @@
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Any
+from typing import Any, Literal
 
 
 class RegisterIn(BaseModel):
     username: str
     password: str
+    role: Literal["user", "doctor", "admin"] = "user"
 
 
 class LoginIn(BaseModel):
     username: str
     password: str
+    role: Literal["user", "doctor", "admin"] = "user"
 
 
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     username: str
+    role: Literal["user", "doctor", "admin"] = "user"
 
 
 class MetricsIn(BaseModel):
@@ -79,3 +82,11 @@ class RecordUpdateIn(BaseModel):
     check_type: str | None = None
     lab_system: str | None = None
     custom_metrics: list[dict[str, Any]] | None = None
+
+
+class DiagnosisIn(BaseModel):
+    # 医生签署的是独立临床意见，不会覆盖体检数据
+    title: str = Field(min_length=2, max_length=120)
+    impression: str = Field(min_length=2, max_length=4000)
+    advice: str = Field(min_length=2, max_length=4000)
+    follow_up: str = Field(default="", max_length=2000)
